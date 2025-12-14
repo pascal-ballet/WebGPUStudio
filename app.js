@@ -39,6 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
   const compileBtn = document.getElementById('compileBtn');
+  let currentDevice = null;
+  let computePipelines = [];
 
   let textures = [];
   let selectedTextureId = null;
@@ -87,7 +89,10 @@ document.addEventListener('DOMContentLoaded', () => {
       errors.forEach((err) => logConsole(err, 'compile'));
       return;
     }
-    await compileWGSL(wgsl);
+    const result = await compileWGSL(wgsl);
+    if (result && result.module) {
+      buildComputePipelines(result.device, result.module);
+    }
   });
 
   // Pipeline events
@@ -763,13 +768,13 @@ document.addEventListener('DOMContentLoaded', () => {
   async function compileWGSL(wgsl) {
     if (!navigator.gpu) {
       logConsole('WebGPU non supporté dans ce navigateur.', 'compile');
-      return;
+      return null;
     }
     try {
       const adapter = await navigator.gpu.requestAdapter();
       if (!adapter) {
         logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
-        return;
+        return null;
       }
       const device = await adapter.requestDevice();
       const module = device.createShaderModule({ code: wgsl });
@@ -784,12 +789,41 @@ document.addEventListener('DOMContentLoaded', () => {
             logConsole(`Avertissement WGSL: ${m.message} (L${m.lineNum} C${m.linePos})`, 'compile');
           }
         });
-      } else {
-        logConsole('Compilation WGSL WebGPU : OK.', 'compile');
+        return null;
       }
+      logConsole('Compilation WGSL WebGPU : OK.', 'compile');
+      currentDevice = device;
+      return { device, module };
     } catch (err) {
       logConsole(`Échec compilation WebGPU: ${err.message || err}`, 'compile');
+      return null;
     }
+  }
+
+  function buildComputePipelines(device, module) {
+    computePipelines = [];
+    if (!pipeline.length) {
+      logConsole('Aucun pipeline défini : module compilé sans pipeline.', 'pipeline');
+      return;
+    }
+    pipeline.forEach((step, idx) => {
+      const shader = shaders.find((s) => s.id === step.shaderId);
+      if (!shader) {
+        logConsole(`Étape ${idx + 1}: shader manquant.`, 'pipeline');
+        return;
+      }
+      const entryPoint = sanitizeEntryName(shader.name);
+      try {
+        const pipe = device.createComputePipeline({
+          layout: 'auto',
+          compute: { module, entryPoint },
+        });
+        computePipelines.push({ stepId: step.id, pipeline: pipe });
+        logConsole(`Pipeline étape ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
+      } catch (err) {
+        logConsole(`Échec création pipeline pour ${shader.name}: ${err.message || err}`, 'pipeline');
+      }
+    });
   }
 
   function logConsole(message, meta = '') {
