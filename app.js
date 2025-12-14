@@ -80,6 +80,12 @@ document.addEventListener('DOMContentLoaded', () => {
   compileBtn.addEventListener('click', () => {
     const wgsl = buildCombinedWGSL();
     alert(wgsl);
+    const errors = validateWGSL(wgsl);
+    if (errors.length === 0) {
+      logConsole('Compilation réussie (vérifications basiques côté client).', 'compile');
+    } else {
+      errors.forEach((err) => logConsole(err, 'compile'));
+    }
   });
 
   // Pipeline events
@@ -730,6 +736,23 @@ document.addEventListener('DOMContentLoaded', () => {
       normalized.push(line);
     });
     return normalized.join('\n').trim();
+  }
+
+  function validateWGSL(wgsl) {
+    const errors = [];
+    const fnMissingParen = /fn\s+[A-Za-z_][\w]*\s*{/.exec(wgsl);
+    if (fnMissingParen) {
+      errors.push('Une fonction semble manquer ses parenthèses : utilisez "fn nom()"');
+    }
+    let balance = 0;
+    wgsl.split('').forEach((ch) => {
+      if (ch === '{') balance += 1;
+      if (ch === '}') balance -= 1;
+    });
+    if (balance !== 0) {
+      errors.push('Accolades déséquilibrées dans le WGSL généré.');
+    }
+    return errors;
   }
 
   function logConsole(message, meta = '') {
