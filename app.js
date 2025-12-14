@@ -687,8 +687,10 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       .join('\n');
 
+    const declSeen = new Set();
+    const bindingOffset = textures.length;
     const shaderSection = shaders
-      .map((s) => s.code.trim())
+      .map((s) => normalizeComputeCode(s.code, bindingOffset, declSeen))
       .filter(Boolean)
       .join('\n\n');
 
@@ -702,6 +704,32 @@ document.addEventListener('DOMContentLoaded', () => {
       '// --- Compute Shaders ---',
       shaderSection || '// (aucun compute shader)',
     ].join('\n');
+  }
+
+  function normalizeComputeCode(code, bindingOffset, declSeen) {
+    if (!code) return '';
+    const lines = code.split('\n');
+    const normalized = [];
+    const bindingRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*(var<[^>]+>\s*[A-Za-z_][\w]*)/;
+    lines.forEach((line) => {
+      const match = line.match(bindingRegex);
+      if (match) {
+        const originalBinding = parseInt(match[1], 10) || 0;
+        const newBinding = bindingOffset + originalBinding;
+        const replaced = line.replace(
+          /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*\d+\s*\)/,
+          `@group(0) @binding(${newBinding})`,
+        );
+        const key = replaced.replace(/\s+/g, ' ').trim();
+        if (!declSeen.has(key)) {
+          declSeen.add(key);
+          normalized.push(replaced);
+        }
+        return;
+      }
+      normalized.push(line);
+    });
+    return normalized.join('\n').trim();
   }
 
   function logConsole(message, meta = '') {
