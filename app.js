@@ -723,6 +723,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return code.replace(fnRegex, `$1${entryName}`);
   }
 
+  function adjustLiteralsForTarget(code, isFloatTarget) {
+    if (isFloatTarget) return code;
+    return code.replace(/(\d+)\.0\b/g, '$1').replace(/(\d+\.\d+)/g, (match) => {
+      const asInt = parseInt(match, 10);
+      return Number.isNaN(asInt) ? match : `${asInt}`;
+    });
+  }
+
   function sanitizedIdentifier(name, fallback = 'identifier') {
     const trimmed = (name || fallback).replace(/[^A-Za-z0-9_]/g, '');
     if (/^[A-Za-z_]/.test(trimmed)) return trimmed || fallback;
@@ -776,8 +784,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const declSeen = new Set();
     const bindingOffset = textures.length;
+    const primaryTextureName = textures[0]
+      ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
+      : null;
+    const primaryTextureType = textures[0]?.type || null;
     const shaderSection = shaders
-      .map((s) => normalizeComputeCode(s.code, bindingOffset, declSeen))
+      .map((s) => normalizeComputeCode(
+        s.code,
+        bindingOffset,
+        declSeen,
+        primaryTextureName,
+        primaryTextureType,
+      ))
       .filter(Boolean)
       .join('\n\n');
 
@@ -793,15 +811,22 @@ document.addEventListener('DOMContentLoaded', () => {
     ].join('\n');
   }
 
-  function normalizeComputeCode(code, bindingOffset, declSeen) {
+  function normalizeComputeCode(code, bindingOffset, declSeen, primaryTextureName, primaryTextureType) {
     if (!code) return '';
     const lines = code.split('\n');
     const normalized = [];
-    const bindingRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*(var<[^>]+>\s*[A-Za-z_][\w]*)/;
+    const bindingRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<[^>]+>\s*([A-Za-z_][\w]*)/;
+    let replacedVar = null;
     lines.forEach((line) => {
       const match = line.match(bindingRegex);
       if (match) {
         const originalBinding = parseInt(match[1], 10) || 0;
+        const varName = match[2];
+        // Si une texture primaire existe, on fait travailler le compute dessus et on supprime la déclaration locale
+        if (primaryTextureName && replacedVar === null) {
+          replacedVar = varName;
+          return;
+        }
         const newBinding = bindingOffset + originalBinding;
         const replaced = line.replace(
           /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*\d+\s*\)/,
@@ -816,7 +841,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       normalized.push(line);
     });
-    return normalized.join('\n').trim();
+    let output = normalized.join('\n');
+    if (replacedVar && primaryTextureName) {
+      const varRegex = new RegExp(`\\b${replacedVar}\\b`, 'g');
+      output = output.replace(varRegex, primaryTextureName);
+      output = adjustLiteralsForTarget(output, primaryTextureType === 'float');
+    }
+    return output.trim();
   }
 
   function validateWGSL(wgsl) {
