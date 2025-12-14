@@ -71,10 +71,11 @@ body {
 }
 
 .tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   gap: 8px;
   margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .tab {
@@ -86,6 +87,8 @@ body {
   cursor: pointer;
   font-weight: 600;
   transition: all 0.2s ease;
+  flex: 1 1 0;
+  min-width: 120px;
 }
 
 .tab.active {
@@ -394,6 +397,37 @@ textarea {
   font-size: 22px;
   font-weight: 700;
   margin-top: 6px;
+}
+
+.console-area {
+  background: #0a0f1f;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  min-height: 240px;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.console-line {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 0, 92, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 0, 92, 0.08);
+  color: #ff9eb6;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.console-line .meta {
+  display: block;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  margin-bottom: 4px;
 }
 
 .timeline-step .meta {

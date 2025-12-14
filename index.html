@@ -24,6 +24,7 @@
       <button class="tab" data-tab="shaders">Compute Shaders</button>
       <button class="tab" data-tab="pipeline">Pipeline</button>
       <button class="tab" data-tab="functions">Fonctions</button>
+      <button class="tab" data-tab="console">Console</button>
     </nav>
 
     <section class="tab-content active" id="tab-textures">
@@ -277,6 +278,19 @@
             <div class="stat-value" id="statChars">0</div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section class="tab-content" id="tab-console">
+      <div class="panel panel-preview" style="grid-column: span 3;">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Console</p>
+            <h2 class="panel-title">Erreurs de compilation</h2>
+          </div>
+          <button class="ghost" id="clearConsoleBtn">Effacer</button>
+        </div>
+        <div class="console-area" id="consoleArea"></div>
       </div>
     </section>
   </main>

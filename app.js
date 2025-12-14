@@ -36,6 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const functionLines = document.getElementById('functionLines');
   const statLines = document.getElementById('statLines');
   const statChars = document.getElementById('statChars');
+  const consoleArea = document.getElementById('consoleArea');
+  const clearConsoleBtn = document.getElementById('clearConsoleBtn');
 
   let textures = [];
   let selectedTextureId = null;
@@ -47,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let pipelineShaderChoiceId = null;
   let functionsStore = [];
   let selectedFunctionId = null;
+  let consoleMessages = [];
 
   // Tabs switching
   tabs.forEach((tab) => {
@@ -66,6 +69,11 @@ document.addEventListener('DOMContentLoaded', () => {
       previewMode = btn.dataset.mode;
       renderPreview();
     });
+  });
+
+  clearConsoleBtn.addEventListener('click', () => {
+    consoleMessages = [];
+    renderConsole();
   });
 
   // Pipeline events
@@ -261,7 +269,16 @@ document.addEventListener('DOMContentLoaded', () => {
   shaderEditor.addEventListener('input', (e) => {
     const shader = shaders.find((s) => s.id === selectedShaderId);
     if (!shader) return;
-    shader.code = e.target.value;
+    const scrollTop = shaderEditor.scrollTop;
+    const cursor = shaderEditor.selectionStart;
+    const updated = enforceEntryName(e.target.value, sanitizeEntryName(shader.name));
+    const changed = updated !== shader.code;
+    shader.code = updated;
+    if (changed) {
+      shaderEditor.value = updated;
+      shaderEditor.selectionStart = shaderEditor.selectionEnd = Math.min(cursor, updated.length);
+      shaderEditor.scrollTop = scrollTop;
+    }
     updateShaderLines(shader.code);
   });
 
@@ -606,8 +623,74 @@ document.addEventListener('DOMContentLoaded', () => {
     statChars.textContent = chars;
   }
 
+  function sanitizeEntryName(name) {
+    return (name || 'main').replace(/[^A-Za-z0-9_]/g, '') || 'main';
+  }
+
+  function enforceEntryName(code, entryName) {
+    const fnRegex = /(fn\s+)([A-Za-z_][\w]*)/m;
+    if (!fnRegex.test(code)) return code;
+    return code.replace(fnRegex, `$1${entryName}`);
+  }
+
+  function logConsole(message, meta = '') {
+    const time = new Date().toLocaleTimeString();
+    consoleMessages.push({ time, message, meta });
+    renderConsole();
+  }
+
+  function renderConsole() {
+    if (!consoleArea) return;
+    consoleArea.innerHTML = '';
+    if (!consoleMessages.length) {
+      const empty = document.createElement('div');
+      empty.className = 'console-line';
+      empty.textContent = 'Aucune erreur pour le moment.';
+      consoleArea.appendChild(empty);
+      return;
+    }
+    consoleMessages.slice(-100).forEach((msg) => {
+      const line = document.createElement('div');
+      line.className = 'console-line';
+      const metaEl = document.createElement('span');
+      metaEl.className = 'meta';
+      metaEl.textContent = `[${msg.time}] ${msg.meta || ''}`.trim();
+      line.appendChild(metaEl);
+      line.appendChild(document.createTextNode(msg.message));
+      consoleArea.appendChild(line);
+    });
+  }
+
+  function logConsole(message, meta = '') {
+    const time = new Date().toLocaleTimeString();
+    consoleMessages.push({ time, message, meta });
+    renderConsole();
+  }
+
+  function renderConsole() {
+    if (!consoleArea) return;
+    consoleArea.innerHTML = '';
+    if (!consoleMessages.length) {
+      const empty = document.createElement('div');
+      empty.className = 'console-line';
+      empty.textContent = 'Aucune erreur pour le moment.';
+      consoleArea.appendChild(empty);
+      return;
+    }
+    consoleMessages.slice(-100).forEach((msg) => {
+      const line = document.createElement('div');
+      line.className = 'console-line';
+      const metaEl = document.createElement('span');
+      metaEl.className = 'meta';
+      metaEl.textContent = `[${msg.time}] ${msg.meta || ''}`.trim();
+      line.appendChild(metaEl);
+      line.appendChild(document.createTextNode(msg.message));
+      consoleArea.appendChild(line);
+    });
+  }
+
   function syncShaderEntryName(shader) {
-    const entryName = (shader.name || 'main').replace(/[^A-Za-z0-9_]/g, '') || 'main';
+    const entryName = sanitizeEntryName(shader.name);
     const computePattern = /(@compute[^\n]*\n\s*fn\s+)([A-Za-z_][\w]*)/m;
     const fnPattern = /(fn\s+)([A-Za-z_][\w]*)/m;
     if (computePattern.test(shader.code)) {
