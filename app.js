@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const statChars = document.getElementById('statChars');
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
+  const compileBtn = document.getElementById('compileBtn');
 
   let textures = [];
   let selectedTextureId = null;
@@ -74,6 +75,11 @@ document.addEventListener('DOMContentLoaded', () => {
   clearConsoleBtn.addEventListener('click', () => {
     consoleMessages = [];
     renderConsole();
+  });
+
+  compileBtn.addEventListener('click', () => {
+    const wgsl = buildCombinedWGSL();
+    alert(wgsl);
   });
 
   // Pipeline events
@@ -633,6 +639,12 @@ document.addEventListener('DOMContentLoaded', () => {
     return code.replace(fnRegex, `$1${entryName}`);
   }
 
+  function sanitizedIdentifier(name, fallback = 'identifier') {
+    const trimmed = (name || fallback).replace(/[^A-Za-z0-9_]/g, '');
+    if (/^[A-Za-z_]/.test(trimmed)) return trimmed || fallback;
+    return `_${trimmed || fallback}`;
+  }
+
   function logConsole(message, meta = '') {
     const time = new Date().toLocaleTimeString();
     consoleMessages.push({ time, message, meta });
@@ -659,6 +671,37 @@ document.addEventListener('DOMContentLoaded', () => {
       line.appendChild(document.createTextNode(msg.message));
       consoleArea.appendChild(line);
     });
+  }
+
+  function buildCombinedWGSL() {
+    const fnSection = functionsStore
+      .map((f) => f.code.trim())
+      .filter(Boolean)
+      .join('\n\n');
+
+    const textureSection = textures
+      .map((tex, idx) => {
+        const name = sanitizedIdentifier(tex.name || `texture${idx + 1}`, `texture${idx + 1}`);
+        const scalar = tex.type === 'float' ? 'f32' : 'i32';
+        return `@group(0) @binding(${idx}) var<storage, read_write> ${name} : array<${scalar}>;`;
+      })
+      .join('\n');
+
+    const shaderSection = shaders
+      .map((s) => s.code.trim())
+      .filter(Boolean)
+      .join('\n\n');
+
+    return [
+      '// --- Fonctions ---',
+      fnSection || '// (aucune fonction)',
+      '',
+      '// --- Textures ---',
+      textureSection || '// (aucune texture)',
+      '',
+      '// --- Compute Shaders ---',
+      shaderSection || '// (aucun compute shader)',
+    ].join('\n');
   }
 
   function logConsole(message, meta = '') {
