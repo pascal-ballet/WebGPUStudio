@@ -77,15 +77,17 @@ document.addEventListener('DOMContentLoaded', () => {
     renderConsole();
   });
 
-  compileBtn.addEventListener('click', () => {
+  compileBtn.addEventListener('click', async () => {
     const wgsl = buildCombinedWGSL();
     alert(wgsl);
     const errors = validateWGSL(wgsl);
     if (errors.length === 0) {
-      logConsole('Compilation réussie (vérifications basiques côté client).', 'compile');
+      logConsole('Compilation statique : OK.', 'compile');
     } else {
       errors.forEach((err) => logConsole(err, 'compile'));
+      return;
     }
+    await compileWGSL(wgsl);
   });
 
   // Pipeline events
@@ -753,6 +755,38 @@ document.addEventListener('DOMContentLoaded', () => {
       errors.push('Accolades déséquilibrées dans le WGSL généré.');
     }
     return errors;
+  }
+
+  async function compileWGSL(wgsl) {
+    if (!navigator.gpu) {
+      logConsole('WebGPU non supporté dans ce navigateur.', 'compile');
+      return;
+    }
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
+        return;
+      }
+      const device = await adapter.requestDevice();
+      const module = device.createShaderModule({ code: wgsl });
+      const info = typeof module.getCompilationInfo === 'function'
+        ? await module.getCompilationInfo()
+        : { messages: [] };
+      if (info.messages.some((m) => m.type === 'error')) {
+        info.messages.forEach((m) => {
+          if (m.type === 'error') {
+            logConsole(`Erreur WGSL: ${m.message} (L${m.lineNum} C${m.linePos})`, 'compile');
+          } else if (m.type === 'warning') {
+            logConsole(`Avertissement WGSL: ${m.message} (L${m.lineNum} C${m.linePos})`, 'compile');
+          }
+        });
+      } else {
+        logConsole('Compilation WGSL WebGPU : OK.', 'compile');
+      }
+    } catch (err) {
+      logConsole(`Échec compilation WebGPU: ${err.message || err}`, 'compile');
+    }
   }
 
   function logConsole(message, meta = '') {
