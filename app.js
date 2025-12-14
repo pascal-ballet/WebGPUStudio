@@ -674,9 +674,12 @@ document.addEventListener('DOMContentLoaded', () => {
       line.className = 'console-line';
       const metaEl = document.createElement('span');
       metaEl.className = 'meta';
-      metaEl.textContent = `[${msg.time}] ${msg.meta || ''}`.trim();
+      const metaText = `[${msg.time}] ${msg.meta || ''}`.trim();
+      metaEl.textContent = metaText;
       line.appendChild(metaEl);
-      line.appendChild(document.createTextNode(msg.message));
+      const messageEl = document.createElement('span');
+      messageEl.textContent = ` ${msg.message}`;
+      line.appendChild(messageEl);
       consoleArea.appendChild(line);
     });
   }
