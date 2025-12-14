@@ -42,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const runBtn = document.getElementById('runBtn');
   let currentDevice = null;
   let computePipelines = [];
+  let bindingBuffers = new Map();
+  let lastCompiledWGSL = '';
 
   let textures = [];
   let selectedTextureId = null;
@@ -82,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   compileBtn.addEventListener('click', async () => {
     const wgsl = buildCombinedWGSL();
+    lastCompiledWGSL = wgsl;
     alert(wgsl);
     const errors = validateWGSL(wgsl);
     if (errors.length === 0) {
@@ -106,8 +109,21 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     try {
+      const { entries, readTasks } = prepareBindingBuffers(currentDevice, lastCompiledWGSL);
+      if (!entries.length) {
+        logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
+        return;
+      }
       const commandEncoder = currentDevice.createCommandEncoder();
       const pass = commandEncoder.beginComputePass();
+      const bindGroupLayout = computePipelines[0]?.pipeline.getBindGroupLayout(0);
+      const bindGroup = bindGroupLayout
+        ? currentDevice.createBindGroup({
+            layout: bindGroupLayout,
+            entries,
+          })
+        : null;
+
       pipeline.forEach((step, idx) => {
         const pipeEntry = computePipelines.find((p) => p.stepId === step.id);
         if (!pipeEntry) {
@@ -115,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         pass.setPipeline(pipeEntry.pipeline);
+        if (bindGroup) pass.setBindGroup(0, bindGroup);
         pass.dispatchWorkgroups(
           step.global?.x || 1,
           step.global?.y || 1,
@@ -123,8 +140,27 @@ document.addEventListener('DOMContentLoaded', () => {
         logConsole(`Dispatch étape ${idx + 1} (${step.name || 'étape'})`, 'run');
       });
       pass.end();
+      readTasks.forEach((task) => {
+        commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
+      });
       currentDevice.queue.submit([commandEncoder.finish()]);
       logConsole('Execution pipeline soumise au GPU.', 'run');
+
+      if (readTasks.length) {
+        await Promise.all(
+          readTasks.map(async (task) => {
+            await task.dst.mapAsync(GPUMapMode.READ);
+            const copy = task.tex.type === 'float'
+              ? new Float32Array(task.dst.getMappedRange().slice(0))
+              : new Int32Array(task.dst.getMappedRange().slice(0));
+            task.dst.unmap();
+            updateTextureValuesFromFlat(task.tex, copy);
+          }),
+        );
+        renderPreview();
+        renderTextureList();
+        logConsole('Textures synchronisées depuis le GPU.', 'run');
+      }
     } catch (err) {
       logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
     }
@@ -859,6 +895,84 @@ document.addEventListener('DOMContentLoaded', () => {
         logConsole(`Échec création pipeline pour ${shader.name}: ${err.message || err}`, 'pipeline');
       }
     });
+  }
+
+  function prepareBindingBuffers(device, wgsl) {
+    const entries = [];
+    const readTasks = [];
+    if (!wgsl) return { entries, readTasks };
+
+    const bindings = new Map();
+    // Textures bindings
+    textures.forEach((tex, idx) => {
+      bindings.set(idx, {
+        binding: idx,
+        scalar: tex.type === 'float' ? 'f32' : 'i32',
+        length: tex.size.x * tex.size.y * tex.size.z,
+        tex,
+      });
+    });
+
+    // Other storage buffers from WGSL
+    const storageRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<storage,[^>]*>\s*[A-Za-z_][\w]*\s*:\s*array<([A-Za-z0-9_]+)>/g;
+    let match;
+    while ((match = storageRegex.exec(wgsl)) !== null) {
+      const binding = parseInt(match[1], 10);
+      const scalar = match[2].toLowerCase().startsWith('f') ? 'f32' : 'i32';
+      if (!bindings.has(binding)) {
+        bindings.set(binding, {
+          binding,
+          scalar,
+          length: 256,
+          tex: null,
+        });
+      }
+    }
+
+    bindings.forEach((info, binding) => {
+      const byteLength = Math.max(4, info.length * 4);
+      let bufEntry = bindingBuffers.get(binding);
+      if (!bufEntry || bufEntry.size !== byteLength) {
+        const buffer = device.createBuffer({
+          size: byteLength,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        });
+        bufEntry = { buffer, size: byteLength };
+        bindingBuffers.set(binding, bufEntry);
+      }
+      entries.push({
+        binding,
+        resource: { buffer: bufEntry.buffer },
+      });
+
+      if (info.tex) {
+        const readBuffer = device.createBuffer({
+          size: byteLength,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+        readTasks.push({ dst: readBuffer, src: bufEntry.buffer, size: byteLength, tex: info.tex });
+      }
+    });
+
+    return { entries, readTasks };
+  }
+
+  function updateTextureValuesFromFlat(tex, flatArray) {
+    const { x, y, z } = tex.size;
+    tex.values = [];
+    let ptr = 0;
+    for (let k = 0; k < z; k += 1) {
+      const layer = [];
+      for (let j = 0; j < y; j += 1) {
+        const row = [];
+        for (let i = 0; i < x; i += 1) {
+          row.push(flatArray[ptr] ?? 0);
+          ptr += 1;
+        }
+        layer.push(row);
+      }
+      tex.values.push(layer);
+    }
   }
 
   function logConsole(message, meta = '') {
