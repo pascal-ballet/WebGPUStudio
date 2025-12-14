@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
   const compileBtn = document.getElementById('compileBtn');
+  const runBtn = document.getElementById('runBtn');
   let currentDevice = null;
   let computePipelines = [];
 
@@ -92,6 +93,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const result = await compileWGSL(wgsl);
     if (result && result.module) {
       buildComputePipelines(result.device, result.module);
+    }
+  });
+
+  runBtn.addEventListener('click', async () => {
+    if (!currentDevice) {
+      logConsole('Aucun device WebGPU initialisé. Compile d’abord.', 'run');
+      return;
+    }
+    if (!computePipelines.length) {
+      logConsole('Aucun pipeline compute disponible. Compile d’abord.', 'run');
+      return;
+    }
+    try {
+      const commandEncoder = currentDevice.createCommandEncoder();
+      const pass = commandEncoder.beginComputePass();
+      pipeline.forEach((step, idx) => {
+        const pipeEntry = computePipelines.find((p) => p.stepId === step.id);
+        if (!pipeEntry) {
+          logConsole(`Étape ${idx + 1}: pipeline introuvable.`, 'run');
+          return;
+        }
+        pass.setPipeline(pipeEntry.pipeline);
+        pass.dispatchWorkgroups(
+          step.global?.x || 1,
+          step.global?.y || 1,
+          step.global?.z || 1,
+        );
+        logConsole(`Dispatch étape ${idx + 1} (${step.name || 'étape'})`, 'run');
+      });
+      pass.end();
+      currentDevice.queue.submit([commandEncoder.finish()]);
+      logConsole('Execution pipeline soumise au GPU.', 'run');
+    } catch (err) {
+      logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
     }
   });
 
