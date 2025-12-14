@@ -83,10 +83,10 @@
 
           <div class="grid-3">
             <label>Taille X
-              <input type="number" name="sizeX" min="1" max="32" value="4" required />
+              <input type="number" name="sizeX" min="1" max="64" value="32" required />
             </label>
             <label>Taille Y
-              <input type="number" name="sizeY" min="1" max="32" value="4" required />
+              <input type="number" name="sizeY" min="1" max="64" value="32" required />
             </label>
             <label>Taille Z
               <input type="number" name="sizeZ" min="1" max="16" value="1" required />
@@ -164,18 +164,6 @@
             </label>
           </div>
 
-          <div class="grid-3">
-            <label>Global X
-              <input type="number" name="globalX" min="1" max="65535" value="64" required />
-            </label>
-            <label>Global Y
-              <input type="number" name="globalY" min="1" max="65535" value="64" required />
-            </label>
-            <label>Global Z
-              <input type="number" name="globalZ" min="1" max="65535" value="1" required />
-            </label>
-          </div>
-
           <div class="grid-2">
             <button type="submit" class="solid">Appliquer</button>
             <button type="button" class="ghost" id="duplicateShaderBtn">Dupliquer</button>
@@ -227,6 +215,18 @@
           <label>Compute shader associé
             <select name="shaderRef" id="pipelineShaderSelect"></select>
           </label>
+
+          <div class="grid-3">
+            <label>Global X
+              <input type="number" name="pGlobalX" min="1" max="65535" value="64" required />
+            </label>
+            <label>Global Y
+              <input type="number" name="pGlobalY" min="1" max="65535" value="64" required />
+            </label>
+            <label>Global Z
+              <input type="number" name="pGlobalZ" min="1" max="65535" value="1" required />
+            </label>
+          </div>
 
           <button type="submit" class="solid">Appliquer</button>
         </form>

@@ -193,6 +193,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const formData = new FormData(pipelineForm);
     step.name = (formData.get('stepName') || step.name).trim() || step.name;
     step.shaderId = formData.get('shaderRef') || step.shaderId;
+    step.global = {
+      x: clamp(parseInt(formData.get('pGlobalX'), 10) || step.global?.x || 1, 1, 65535),
+      y: clamp(parseInt(formData.get('pGlobalY'), 10) || step.global?.y || 1, 1, 65535),
+      z: clamp(parseInt(formData.get('pGlobalZ'), 10) || step.global?.z || 1, 1, 65535),
+    };
     renderPipelineViews();
   });
 
@@ -248,6 +253,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renderShaderList();
     renderShaderForm(shader);
     renderShaderEditor(shader);
+    pipeline.forEach((step) => {
+      if (!step.global) {
+        step.global = { x: 32, y: 32, z: 1 };
+      }
+    });
     renderPipelineViews();
   });
 
@@ -375,8 +385,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function buildTextureFromForm() {
     const formData = new FormData(textureForm);
     const size = {
-      x: clamp(parseInt(formData.get('sizeX'), 10) || 1, 1, 32),
-      y: clamp(parseInt(formData.get('sizeY'), 10) || 1, 1, 32),
+      x: clamp(parseInt(formData.get('sizeX'), 10) || 32, 1, 64),
+      y: clamp(parseInt(formData.get('sizeY'), 10) || 32, 1, 64),
       z: clamp(parseInt(formData.get('sizeZ'), 10) || 1, 1, 16),
     };
     const rawName = (formData.get('name') || '').trim().replace(/\s+/g, '');
@@ -505,6 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `step-${Date.now()}`,
       name: `Étape ${idx}`,
       shaderId,
+      global: { x: 32, y: 32, z: 1 },
     };
   }
 
@@ -534,12 +545,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderPipelineTimeline() {
-    pipelineTimeline.innerHTML = '';
-    if (!pipeline.length) {
-      pipelineTimeline.innerHTML = '<p class="eyebrow">Aucune étape dans le pipeline.</p>';
-      return;
-    }
-    pipeline.forEach((step, index) => {
+  pipelineTimeline.innerHTML = '';
+  if (!pipeline.length) {
+    pipelineTimeline.innerHTML = '<p class="eyebrow">Aucune étape dans le pipeline.</p>';
+    return;
+  }
+  pipeline.forEach((step, index) => {
       const block = document.createElement('div');
       block.className = 'timeline-step';
         block.draggable = true;
@@ -552,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
       title.textContent = step.name;
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = pipelineShaderLabel(step.shaderId);
+      meta.textContent = `${pipelineShaderLabel(step.shaderId)} · Global ${step.global?.x ?? 1}×${step.global?.y ?? 1}×${step.global?.z ?? 1}`;
       content.appendChild(title);
       content.appendChild(meta);
       block.appendChild(badge);
@@ -592,6 +603,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       pipelineShaderSelect.value = step.shaderId || shaders[0].id;
     }
+    pipelineForm.pGlobalX.value = step.global?.x ?? 64;
+    pipelineForm.pGlobalY.value = step.global?.y ?? 64;
+    pipelineForm.pGlobalZ.value = step.global?.z ?? 1;
   }
 
   function renderPipelineViews() {
@@ -1070,7 +1084,6 @@ document.addEventListener('DOMContentLoaded', () => {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `shader-${Date.now()}`,
       name: shaderName,
       workgroup: { x: 8, y: 8, z: 1 },
-      global: { x: 64, y: 64, z: 1 },
       code: defaultShaderCode(entryName),
     };
   }
@@ -1103,11 +1116,6 @@ document.addEventListener('DOMContentLoaded', () => {
       x: clamp(parseInt(formData.get('wgX'), 10) || shader.workgroup.x, 1, 1024),
       y: clamp(parseInt(formData.get('wgY'), 10) || shader.workgroup.y, 1, 1024),
       z: clamp(parseInt(formData.get('wgZ'), 10) || shader.workgroup.z, 1, 64),
-    };
-    shader.global = {
-      x: clamp(parseInt(formData.get('globalX'), 10) || shader.global.x, 1, 65535),
-      y: clamp(parseInt(formData.get('globalY'), 10) || shader.global.y, 1, 65535),
-      z: clamp(parseInt(formData.get('globalZ'), 10) || shader.global.z, 1, 65535),
     };
     renderShaderForm(shader);
   }
@@ -1159,9 +1167,6 @@ document.addEventListener('DOMContentLoaded', () => {
     shaderForm.wgX.value = shader.workgroup.x;
     shaderForm.wgY.value = shader.workgroup.y;
     shaderForm.wgZ.value = shader.workgroup.z;
-    shaderForm.globalX.value = shader.global.x;
-    shaderForm.globalY.value = shader.global.y;
-    shaderForm.globalZ.value = shader.global.z;
   }
 
   function renderShaderEditor(shader) {
@@ -1299,7 +1304,7 @@ document.addEventListener('DOMContentLoaded', () => {
       name: 'Texture1',
       type: 'int',
       fill: 'random',
-      size: { x: 4, y: 4, z: 1 },
+      size: { x: 32, y: 32, z: 1 },
       values: [],
     };
     regenerateValues(defaultTex);
