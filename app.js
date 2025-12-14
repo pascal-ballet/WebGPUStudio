@@ -38,12 +38,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const statChars = document.getElementById('statChars');
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
-  const compileBtn = document.getElementById('compileBtn');
-  const runBtn = document.getElementById('runBtn');
+
+  const compileBtn  = document.getElementById('compileBtn');
+  const stepBtn     = document.getElementById('stepBtn');
+  const runBtn      = document.getElementById('runBtn');
+  const pauseBtn    = document.getElementById('pauseBtn');
+  const stopBtn     = document.getElementById('stopBtn');
+
+  // Vérifications simples pour s'assurer que les boutons sont bien trouvés
+  if (!compileBtn) console.warn('compileBtn introuvable dans le DOM'); else console.log('compileBtn détecté');
+  if (!runBtn) console.warn('runBtn introuvable dans le DOM'); else console.log('runBtn détecté');
+  if (!pauseBtn) console.warn('pauseBtn introuvable dans le DOM'); else console.log('pauseBtn détecté');
+  if (!stepBtn) console.warn('stepBtn introuvable dans le DOM'); else console.log('stepBtn détecté');
+  if (!stopBtn) console.warn('stopBtn introuvable dans le DOM'); else console.log('stopBtn détecté');
+    
   let currentDevice = null;
   let computePipelines = [];
   let bindingBuffers = new Map();
   let lastCompiledWGSL = '';
+  let isRunning = false;
+  let isPaused = false;
 
   let textures = [];
   let selectedTextureId = null;
@@ -99,7 +113,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  stepBtn.addEventListener('click', async () => {
+    await playStep();
+  });
+
   runBtn.addEventListener('click', async () => {
+    if (isRunning && !isPaused) {
+      logConsole('Exécution déjà en cours.', 'run');
+      return;
+    }
+    isRunning = true;
+    isPaused = false;
+    logConsole('Boucle run démarrée.', 'run');
+    while (isRunning) {
+      await playStep();
+      if (isPaused) break;
+    }
+  });
+
+  async function playStep() {
     if (!currentDevice) {
       logConsole('Aucun device WebGPU initialisé. Compile d’abord.', 'run');
       return;
@@ -164,6 +196,27 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
     }
+  }
+
+  stopBtn.addEventListener('click', () => {
+    isRunning = false;
+    isPaused = false;
+    resetGPUState();
+    logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    console.log('pause click');
+    if (!isRunning) {
+      logConsole('Rien à mettre en pause (pas de run en cours).', 'pause');
+      return;
+    }
+    if (isPaused) {
+      logConsole('Déjà en pause. Cliquez sur Run pour reprendre.', 'pause');
+      return;
+    }
+    isPaused = true;
+    logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
   });
 
   // Pipeline events
@@ -1018,6 +1071,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       tex.values.push(layer);
     }
+  }
+
+  function resetGPUState() {
+    computePipelines = [];
+    lastCompiledWGSL = '';
+    bindingBuffers.forEach((entry) => {
+      if (entry?.buffer) entry.buffer.destroy();
+    });
+    bindingBuffers = new Map();
+    if (currentDevice && typeof currentDevice.destroy === 'function') {
+      currentDevice.destroy();
+    }
+    currentDevice = null;
   }
 
   function logConsole(message, meta = '') {
