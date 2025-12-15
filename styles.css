@@ -168,6 +168,14 @@ body {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
+.ghost:disabled, .solid:disabled, .toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(255, 0, 0, 1.0);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: none;
+}
+
 .ghost.small {
   padding: 8px 10px;
   font-size: 13px;

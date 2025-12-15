@@ -56,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let computePipelines = [];
   let bindingBuffers = new Map();
   let lastCompiledWGSL = '';
+  let isCompiled = false;
   let isRunning = false;
   let isPaused = false;
 
@@ -124,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     isRunning = true;
     isPaused = false;
+
     logConsole('Boucle run démarrée.', 'run');
     while (isRunning) {
       await playStep();
@@ -131,6 +133,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  async function updateButtons() {
+    if (isCompiled == true) {
+      runBtn.style.color = 'grey';
+    } else {
+      runBtn.style.color = 'white';
+    }
+    if (isRunning == true) {
+      compileBtn.style.color = 'grey';
+    }
+  }
+
+  // ***************************************************************************************
   async function playStep() {
     if (!currentDevice) {
       logConsole('Aucun device WebGPU initialisé. Compile d’abord.', 'run');
@@ -169,14 +183,15 @@ document.addEventListener('DOMContentLoaded', () => {
           step.global?.y || 1,
           step.global?.z || 1,
         );
-        logConsole(`Dispatch étape ${idx + 1} (${step.name || 'étape'})`, 'run');
+        /// logConsole(`Dispatch étape ${idx + 1} (${step.name || 'étape'})`, 'run');
       });
       pass.end();
       readTasks.forEach((task) => {
         commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
       });
       currentDevice.queue.submit([commandEncoder.finish()]);
-      logConsole('Execution pipeline soumise au GPU.', 'run');
+      await currentDevice.queue.onSubmittedWorkDone();
+      /// logConsole('Execution pipeline soumise au GPU.', 'run');
 
       if (readTasks.length) {
         await Promise.all(
@@ -191,16 +206,19 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         renderPreview();
         renderTextureList();
-        logConsole('Textures synchronisées depuis le GPU.', 'run');
+        /// logConsole('Textures synchronisées depuis le GPU.', 'run');
       }
     } catch (err) {
       logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
     }
   }
+  // ***************************************************************************************
 
   stopBtn.addEventListener('click', () => {
     isRunning = false;
     isPaused = false;
+    runBtn.textContent = "Run";
+    runBtn.style.color = 'white';
     resetGPUState();
     logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
   });
@@ -216,6 +234,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     isPaused = true;
+    runBtn.textContent = "Run";
+    runBtn.style.color = 'white';
     logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
   });
 
