@@ -56,9 +56,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let computePipelines = [];
   let bindingBuffers = new Map();
   let lastCompiledWGSL = '';
+
   let isCompiled = false;
   let isRunning = false;
   let isPaused = false;
+  updateButtons()
 
   let textures = [];
   let selectedTextureId = null;
@@ -97,15 +99,23 @@ document.addEventListener('DOMContentLoaded', () => {
     renderConsole();
   });
 
+  // ********************
+  // Toolbar
+  // ********************
+
   compileBtn.addEventListener('click', async () => {
+    if (compileBtn.style.color === 'grey') return;
+    isCompiled = true; updateButtons();
     const wgsl = buildCombinedWGSL();
     lastCompiledWGSL = wgsl;
     alert(wgsl);
     const errors = validateWGSL(wgsl);
     if (errors.length === 0) {
       logConsole('Compilation statique : OK.', 'compile');
+      isCompiled = true; updateButtons();
     } else {
       errors.forEach((err) => logConsole(err, 'compile'));
+      isCompiled = false; updateButtons();
       return;
     }
     const result = await compileWGSL(wgsl);
@@ -115,16 +125,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   stepBtn.addEventListener('click', async () => {
+    if (stepBtn.style.color === 'grey') return;
     await playStep();
+    isRunning = true;
+    isPaused = true;
+    updateButtons();
   });
 
   runBtn.addEventListener('click', async () => {
+    if (runBtn.style.color === 'grey') return;
     if (isRunning && !isPaused) {
       logConsole('Exécution déjà en cours.', 'run');
       return;
     }
     isRunning = true;
     isPaused = false;
+    updateButtons();
 
     logConsole('Boucle run démarrée.', 'run');
     while (isRunning) {
@@ -133,15 +149,71 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  pauseBtn.addEventListener('click', () => {
+    if (pauseBtn.style.color === 'grey') return;
+    console.log('pause click');
+    if (!isRunning) {
+      logConsole('Rien à mettre en pause (pas de run en cours).', 'pause');
+      return;
+    }
+    if (isPaused) {
+      logConsole('Déjà en pause. Cliquez sur Run pour reprendre.', 'pause');
+      return;
+    }
+    isPaused = true; updateButtons();
+    logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (stopBtn.style.color === 'grey') return;
+    isRunning  = false;
+    isPaused   = false;
+    isCompiled = false;
+    updateButtons();
+    resetGPUState();
+    logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
+  });
+
+  // ********************
+  // Toolbar Update
+  // ********************
+
   async function updateButtons() {
-    if (isCompiled == true) {
-      runBtn.style.color = 'grey';
-    } else {
-      runBtn.style.color = 'white';
-    }
-    if (isRunning == true) {
+    if (isCompiled == true) { // COMPILED **********
       compileBtn.style.color = 'grey';
+      if (isRunning == true) { // RUNNING >>>>>>
+        if (isPaused == true) { // PAUSED     :::
+          stepBtn.style.color    = 'white';   
+          runBtn.style.color     = 'white';       
+          pauseBtn.style.color   = 'grey';
+          stopBtn.style.color    = 'red';          
+        } else {                // NOT PAUSED OOO
+          stepBtn.style.color    = 'grey';   
+          runBtn.style.color     = 'grey';       
+          pauseBtn.style.color   = 'white';
+          stopBtn.style.color    = 'red';
+        }
+      } else {                 // NOT RUNNING |||
+        if (isPaused == true) { // PAUSED     :::
+          stepBtn.style.color     = 'white';   
+          runBtn.style.color      = 'white';
+          pauseBtn.style.color    = 'grey';
+          stopBtn.style.color     = 'red';
+        } else {                 // NOT PAUSED OOO
+            stepBtn.style.color    = 'white';   
+            runBtn.style.color     = 'white';
+            pauseBtn.style.color   = 'grey';
+            stopBtn.style.color    = 'red';
+        }
+      }
+    } else {                   // NOT COMPILED ********
+      compileBtn.style.color = 'white';
+      stepBtn.style.color    = 'grey';
+      runBtn.style.color     = 'grey';
+      pauseBtn.style.color   = 'grey';
+      stopBtn.style.color    = 'grey';
     }
+
   }
 
   // ***************************************************************************************
@@ -213,31 +285,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   // ***************************************************************************************
-
-  stopBtn.addEventListener('click', () => {
-    isRunning = false;
-    isPaused = false;
-    runBtn.textContent = "Run";
-    runBtn.style.color = 'white';
-    resetGPUState();
-    logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
-  });
-
-  pauseBtn.addEventListener('click', () => {
-    console.log('pause click');
-    if (!isRunning) {
-      logConsole('Rien à mettre en pause (pas de run en cours).', 'pause');
-      return;
-    }
-    if (isPaused) {
-      logConsole('Déjà en pause. Cliquez sur Run pour reprendre.', 'pause');
-      return;
-    }
-    isPaused = true;
-    runBtn.textContent = "Run";
-    runBtn.style.color = 'white';
-    logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
-  });
 
   // Pipeline events
   addPipelineBtn.addEventListener('click', () => {
@@ -942,6 +989,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const fnMissingParen = /fn\s+[A-Za-z_][\w]*\s*{/.exec(wgsl);
     if (fnMissingParen) {
       errors.push('Une fonction semble manquer ses parenthèses : utilisez "fn nom()"');
+      isCompiled = false;
     }
     let balance = 0;
     wgsl.split('').forEach((ch) => {
@@ -950,19 +998,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     if (balance !== 0) {
       errors.push('Accolades déséquilibrées dans le WGSL généré.');
+      isCompiled = false;
     }
+    updateButtons();
     return errors;
   }
 
   async function compileWGSL(wgsl) {
     if (!navigator.gpu) {
       logConsole('WebGPU non supporté dans ce navigateur.', 'compile');
+      isCompiled = false; updateButtons();
       return null;
     }
     try {
       const adapter = await navigator.gpu.requestAdapter();
       if (!adapter) {
         logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
+        isCompiled = false; updateButtons();
         return null;
       }
       const device = await adapter.requestDevice();
@@ -978,13 +1030,16 @@ document.addEventListener('DOMContentLoaded', () => {
             logConsole(`Avertissement WGSL: ${m.message} (L${m.lineNum} C${m.linePos})`, 'compile');
           }
         });
+        isCompiled = false; updateButtons();
         return null;
       }
       logConsole('Compilation WGSL WebGPU : OK.', 'compile');
+      isCompiled = true; updateButtons();
       currentDevice = device;
       return { device, module };
     } catch (err) {
       logConsole(`Échec compilation WebGPU: ${err.message || err}`, 'compile');
+      isCompiled = false; updateButtons();
       return null;
     }
   }
@@ -993,12 +1048,14 @@ document.addEventListener('DOMContentLoaded', () => {
     computePipelines = [];
     if (!pipeline.length) {
       logConsole('Aucun pipeline défini : module compilé sans pipeline.', 'pipeline');
+      isCompiled = false; updateButtons();
       return;
     }
     pipeline.forEach((step, idx) => {
       const shader = shaders.find((s) => s.id === step.shaderId);
       if (!shader) {
         logConsole(`Étape ${idx + 1}: shader manquant.`, 'pipeline');
+        isCompiled = false; updateButtons();
         return;
       }
       const entryPoint = sanitizeEntryName(shader.name);
@@ -1009,8 +1066,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         computePipelines.push({ stepId: step.id, pipeline: pipe });
         logConsole(`Pipeline étape ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
+        isCompiled = true; updateButtons();
       } catch (err) {
         logConsole(`Échec création pipeline pour ${shader.name}: ${err.message || err}`, 'pipeline');
+        isCompiled = false; updateButtons();
       }
     });
   }
