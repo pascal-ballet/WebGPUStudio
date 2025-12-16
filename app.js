@@ -625,7 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!Number.isNaN(n)) maxIdx = Math.max(maxIdx, n);
       }
     });
-    return `Texture${maxIdx + 1}`;
+    return `texture${maxIdx + 1}`;
   }
 
   function buildPipelineStep(shaderIdParam) {
@@ -1235,13 +1235,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function defaultShaderCode(entryName = 'main') {
     return [
-      '@group(0) @binding(0) var<storage, read_write> data : array<f32>;',
+      '@group(0) @binding(0) var<storage, read_write> texture1 : array<u32>;',
       '',
       '@compute @workgroup_size(8, 8, 1)',
       `fn ${entryName}(@builtin(global_invocation_id) gid : vec3<u32>) {`,
       '    let index = gid.y * 64u + gid.x;',
       '    if (index < arrayLength(&data)) {',
-      '        data[index] = data[index] + 1.0;',
+      '        texture1[index] = texture1[index] + 1;',
       '    }',
       '}',
     ].join('\n');
@@ -1446,7 +1446,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function seedInitialTexture() {
     const defaultTex = {
       id: 'tex-default',
-      name: 'Texture1',
+      name: 'texture1',
       type: 'int',
       fill: 'random',
       size: { x: 32, y: 32, z: 1 },
