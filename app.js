@@ -1240,7 +1240,7 @@ document.addEventListener('DOMContentLoaded', () => {
       '@compute @workgroup_size(8, 8, 1)',
       `fn ${entryName}(@builtin(global_invocation_id) gid : vec3<u32>) {`,
       '    let index = gid.y * 64u + gid.x;',
-      '    if (index < arrayLength(&data)) {',
+      '    if (index < arrayLength(&texture1)) {',
       '        texture1[index] = texture1[index] + 1;',
       '    }',
       '}',
