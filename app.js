@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isCompiled = false;
   let isRunning = false;
   let isPaused = false;
+  let runTimerId = null;
   updateButtons()
 
   let textures = [];
@@ -143,10 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateButtons();
 
     logConsole('Boucle run démarrée.', 'run');
-    while (isRunning) {
-      await playStep();
-      if (isPaused) break;
-    }
+    stopRunTimer();
+    scheduleRunStep();
   });
 
   pauseBtn.addEventListener('click', () => {
@@ -161,6 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     isPaused = true; updateButtons();
+    stopRunTimer();
     logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
   });
 
@@ -169,10 +169,31 @@ document.addEventListener('DOMContentLoaded', () => {
     isRunning  = false;
     isPaused   = false;
     isCompiled = false;
+    stopRunTimer();
     updateButtons();
     resetGPUState();
     logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
   });
+
+  function stopRunTimer() {
+    if (runTimerId !== null) {
+      clearTimeout(runTimerId);
+      runTimerId = null;
+    }
+  }
+
+  async function scheduleRunStep() {
+    if (!isRunning || isPaused) {
+      stopRunTimer();
+      return;
+    }
+    await playStep();
+    if (isRunning && !isPaused) {
+      runTimerId = setTimeout(scheduleRunStep, 0);
+    } else {
+      stopRunTimer();
+    }
+  }
 
   // ********************
   // Toolbar Update
