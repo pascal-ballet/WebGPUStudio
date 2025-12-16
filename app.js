@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isCompiled = false;
   let isRunning = false;
   let isPaused = false;
-  let runTimerId = null;
+  let timerId = null;
   updateButtons()
 
   let textures = [];
@@ -104,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Toolbar
   // ********************
 
-  compileBtn.addEventListener('click', async () => {
+  compileBtn.addEventListener('click', async () => { // COMPILE BUTTON
     if (compileBtn.style.color === 'grey') return;
     isCompiled = true; updateButtons();
     const wgsl = buildCombinedWGSL();
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  stepBtn.addEventListener('click', async () => {
+  stepBtn.addEventListener('click', async () => { // STEP BUTTON
     if (stepBtn.style.color === 'grey') return;
     await playStep();
     isRunning = true;
@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateButtons();
   });
 
-  runBtn.addEventListener('click', async () => {
+  runBtn.addEventListener('click', async () => { // RUN BUTTON
     if (runBtn.style.color === 'grey') return;
     if (isRunning && !isPaused) {
       logConsole('Exécution déjà en cours.', 'run');
@@ -144,11 +144,10 @@ document.addEventListener('DOMContentLoaded', () => {
     updateButtons();
 
     logConsole('Boucle run démarrée.', 'run');
-    stopRunTimer();
-    scheduleRunStep();
+    startTimer();
   });
 
-  pauseBtn.addEventListener('click', () => {
+  pauseBtn.addEventListener('click', () => { // PAUSE BUTTON
     if (pauseBtn.style.color === 'grey') return;
     console.log('pause click');
     if (!isRunning) {
@@ -160,39 +159,42 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     isPaused = true; updateButtons();
-    stopRunTimer();
+    stopTimer();
     logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
   });
 
-  stopBtn.addEventListener('click', () => {
+  stopBtn.addEventListener('click', () => { // STOP BUTTON
     if (stopBtn.style.color === 'grey') return;
     isRunning  = false;
     isPaused   = false;
     isCompiled = false;
-    stopRunTimer();
+    stopTimer();
     updateButtons();
     resetGPUState();
     logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
   });
 
-  function stopRunTimer() {
-    if (runTimerId !== null) {
-      clearTimeout(runTimerId);
-      runTimerId = null;
+  // **********************
+  // Simulation Timer
+  // **********************
+
+  // lancer le timer
+  function startTimer() {
+    if (timerId === null) {
+      timerId = setInterval(play, 500);
     }
   }
 
-  async function scheduleRunStep() {
-    if (!isRunning || isPaused) {
-      stopRunTimer();
-      return;
+  // stopper le timer
+  function stopTimer() {
+    if (timerId !== null) {
+      clearInterval(timerId);
+      timerId = null;
     }
-    await playStep();
-    if (isRunning && !isPaused) {
-      runTimerId = setTimeout(scheduleRunStep, 0);
-    } else {
-      stopRunTimer();
-    }
+  }
+
+  function play() {
+    playStep();
   }
 
   // ********************
