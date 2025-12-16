@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   stepBtn.addEventListener('click', async () => { // STEP BUTTON
     if (stepBtn.style.color === 'grey') return;
-    await playStep();
+    playStep();
     isRunning = true;
     isPaused = true;
     updateButtons();
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // lancer le timer
   function startTimer() {
     if (timerId === null) {
-      timerId = setInterval(play, 500);
+      timerId = setInterval(play, 10);
     }
   }
 
@@ -240,31 +240,37 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ***************************************************************************************
-  async function playStep() {
+  // Prépare une exécution (buffers, bind group) sans lancer le GPU.
+  // Retourne un objet avec commandEncoder, readTasks et bindGroup.
+  function initPipelineExecution() {
     if (!currentDevice) {
       logConsole('Aucun device WebGPU initialisé. Compile d’abord.', 'run');
-      return;
+      return null;
     }
     if (!computePipelines.length) {
       logConsole('Aucun pipeline compute disponible. Compile d’abord.', 'run');
-      return;
+      return null;
     }
-    try {
-      const { entries, readTasks } = prepareBindingBuffers(currentDevice, lastCompiledWGSL);
-      if (!entries.length) {
-        logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
-        return;
-      }
-      const commandEncoder = currentDevice.createCommandEncoder();
-      const pass = commandEncoder.beginComputePass();
-      const bindGroupLayout = computePipelines[0]?.pipeline.getBindGroupLayout(0);
-      const bindGroup = bindGroupLayout
-        ? currentDevice.createBindGroup({
-            layout: bindGroupLayout,
-            entries,
-          })
-        : null;
+    const { entries, readTasks } = prepareBindingBuffers(currentDevice, lastCompiledWGSL);
+    if (!entries.length) {
+      logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
+      return null;
+    }
+    const commandEncoder = currentDevice.createCommandEncoder();
+    const pass = commandEncoder.beginComputePass();
+    const bindGroupLayout = computePipelines[0]?.pipeline.getBindGroupLayout(0);
+    const bindGroup = bindGroupLayout
+      ? currentDevice.createBindGroup({ layout: bindGroupLayout, entries })
+      : null;
+    return { commandEncoder, pass, bindGroup, readTasks };
+  }
 
+  // Exécute le pipeline en utilisant la préparation fournie par initPipelineExecution.
+  // Retourne une Promise résolue après lecture des textures.
+  function executePipeline(prepared) {
+    if (!prepared) return Promise.resolve();
+    const { commandEncoder, pass, bindGroup, readTasks } = prepared;
+    try {
       pipeline.forEach((step, idx) => {
         const pipeEntry = computePipelines.find((p) => p.stepId === step.id);
         if (!pipeEntry) {
@@ -278,34 +284,51 @@ document.addEventListener('DOMContentLoaded', () => {
           step.global?.y || 1,
           step.global?.z || 1,
         );
-        /// logConsole(`Dispatch étape ${idx + 1} (${step.name || 'étape'})`, 'run');
       });
       pass.end();
       readTasks.forEach((task) => {
         commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
       });
       currentDevice.queue.submit([commandEncoder.finish()]);
-      await currentDevice.queue.onSubmittedWorkDone();
-      /// logConsole('Execution pipeline soumise au GPU.', 'run');
 
-      if (readTasks.length) {
-        await Promise.all(
-          readTasks.map(async (task) => {
-            await task.dst.mapAsync(GPUMapMode.READ);
-            const copy = task.tex.type === 'float'
-              ? new Float32Array(task.dst.getMappedRange().slice(0))
-              : new Int32Array(task.dst.getMappedRange().slice(0));
-            task.dst.unmap();
-            updateTextureValuesFromFlat(task.tex, copy);
-          }),
-        );
-        renderPreview();
-        renderTextureList();
-        /// logConsole('Textures synchronisées depuis le GPU.', 'run');
-      }
+      const waitGPU = currentDevice.queue.onSubmittedWorkDone
+        ? currentDevice.queue.onSubmittedWorkDone()
+        : Promise.resolve();
+
+      const readBack = () => {
+        if (!readTasks.length) return Promise.resolve();
+        return Promise.all(
+          readTasks.map((task) => task.dst.mapAsync(GPUMapMode.READ)
+            .then(() => {
+              const range = task.dst.getMappedRange();
+              const copy = task.tex.type === 'float'
+                ? new Float32Array(range.slice(0))
+                : new Int32Array(range.slice(0));
+              task.dst.unmap();
+              updateTextureValuesFromFlat(task.tex, copy);
+            })
+            .catch((mapErr) => {
+              logConsole(`Lecture buffer échouée: ${mapErr.message || mapErr}`, 'run');
+            })),
+        ).then(() => {
+          renderPreview();
+          renderTextureList();
+        });
+      };
+
+      return waitGPU.then(readBack).catch((err) => {
+        logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
+      });
     } catch (err) {
       logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
+      return Promise.resolve();
     }
+  }
+
+  // Wrapper pour une exécution complète (prépare + exécute)
+  function playStep() {
+    const prep = initPipelineExecution();
+    return executePipeline(prep);
   }
   // ***************************************************************************************
 
