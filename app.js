@@ -74,6 +74,18 @@ document.addEventListener('DOMContentLoaded', () => {
   let functionsStore = [];
   let selectedFunctionId = null;
   let consoleMessages = [];
+  let prep = null;
+  let bindingsDirty = true; // force regen des bind groups/read buffers quand besoin
+  let isStepRunning = false; // Empêche les appels concurrents à playStep
+  let bindingMetas = new Map();
+  let initialUploadDone = false;
+
+  function markBindingsDirty() {
+    bindingsDirty = true;
+    prep = null;
+    bindingMetas = new Map();
+    initialUploadDone = false;
+  }
 
   // Tabs switching
   tabs.forEach((tab) => {
@@ -122,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const result = await compileWGSL(wgsl);
     if (result && result.module) {
       buildComputePipelines(result.device, result.module);
+      markBindingsDirty(); // nouveau module/pipelines => regen bind group
     }
   });
 
@@ -181,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // lancer le timer
   function startTimer() {
     if (timerId === null) {
-      timerId = setInterval(play, 10);
+      timerId = setInterval(play, 1);
     }
   }
 
@@ -239,10 +252,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   }
 
-  // ***************************************************************************************
-  // Prépare une exécution (buffers, bind group) sans lancer le GPU.
-  // Retourne un objet avec commandEncoder, readTasks et bindGroup.
+  // Prépare bind group + buffers + dispatchList
   function initPipelineExecution() {
+    if (!bindingsDirty && prep) return prep;
+    bindingMetas = new Map();
     if (!currentDevice) {
       logConsole('Aucun device WebGPU initialisé. Compile d’abord.', 'run');
       return null;
@@ -256,80 +269,91 @@ document.addEventListener('DOMContentLoaded', () => {
       logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
       return null;
     }
-    const commandEncoder = currentDevice.createCommandEncoder();
-    const pass = commandEncoder.beginComputePass();
     const bindGroupLayout = computePipelines[0]?.pipeline.getBindGroupLayout(0);
-    const bindGroup = bindGroupLayout
-      ? currentDevice.createBindGroup({ layout: bindGroupLayout, entries })
-      : null;
-    return { commandEncoder, pass, bindGroup, readTasks };
-  }
-
-  // Exécute le pipeline en utilisant la préparation fournie par initPipelineExecution.
-  // Retourne une Promise résolue après lecture des textures.
-  function executePipeline(prepared) {
-    if (!prepared) return Promise.resolve();
-    const { commandEncoder, pass, bindGroup, readTasks } = prepared;
-    try {
-      pipeline.forEach((step, idx) => {
+    if (!bindGroupLayout) {
+      logConsole('Impossible de récupérer le layout du bind group.', 'run');
+      return null;
+    }
+    const bindGroup = currentDevice.createBindGroup({ layout: bindGroupLayout, entries });
+    const dispatchList = pipeline
+      .map((step, idx) => {
         const pipeEntry = computePipelines.find((p) => p.stepId === step.id);
         if (!pipeEntry) {
           logConsole(`Étape ${idx + 1}: pipeline introuvable.`, 'run');
-          return;
+          return null;
         }
-        pass.setPipeline(pipeEntry.pipeline);
-        if (bindGroup) pass.setBindGroup(0, bindGroup);
-        pass.dispatchWorkgroups(
-          step.global?.x || 1,
-          step.global?.y || 1,
-          step.global?.z || 1,
-        );
-      });
-      pass.end();
-      readTasks.forEach((task) => {
-        commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
-      });
-      currentDevice.queue.submit([commandEncoder.finish()]);
+        return {
+          pipeline: pipeEntry.pipeline,
+          x: step.global?.x || 1,
+          y: step.global?.y || 1,
+          z: step.global?.z || 1,
+        };
+      })
+      .filter(Boolean);
+    prep = { bindGroup, readTasks, dispatchList };
+    uploadInitialTextureBuffers();
+    bindingsDirty = false;
+    return prep;
+  }
 
-      const waitGPU = currentDevice.queue.onSubmittedWorkDone
-        ? currentDevice.queue.onSubmittedWorkDone()
-        : Promise.resolve();
-
-      const readBack = () => {
-        if (!readTasks.length) return Promise.resolve();
-        return Promise.all(
-          readTasks.map((task) => task.dst.mapAsync(GPUMapMode.READ)
-            .then(() => {
-              const range = task.dst.getMappedRange();
-              const copy = task.tex.type === 'float'
-                ? new Float32Array(range.slice(0))
-                : new Int32Array(range.slice(0));
-              task.dst.unmap();
-              updateTextureValuesFromFlat(task.tex, copy);
-            })
-            .catch((mapErr) => {
-              logConsole(`Lecture buffer échouée: ${mapErr.message || mapErr}`, 'run');
-            })),
-        ).then(() => {
-          renderPreview();
-          renderTextureList();
-        });
-      };
-
-      return waitGPU.then(readBack).catch((err) => {
-        logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
-      });
-    } catch (err) {
-      logConsole(`Échec exécution pipeline: ${err.message || err}`, 'run');
-      return Promise.resolve();
+  // Lit les buffers GPU -> CPU et relâche le verrou quand tout est lu
+  function handleReadbacks(readTasks) {
+    let pending = readTasks.length;
+    if (!pending) {
+      isStepRunning = false;
+      return;
     }
+    readTasks.forEach((task) => {
+      task.dst.mapAsync(GPUMapMode.READ)
+        .then(() => {
+          const range = task.dst.getMappedRange();
+          const copy = task.tex.type === 'float'
+            ? new Float32Array(range.slice(0))
+            : new Int32Array(range.slice(0));
+          task.dst.unmap();
+          updateTextureValuesFromFlat(task.tex, copy);
+        })
+        .catch((mapErr) => {
+          logConsole(`Lecture buffer échouée: ${mapErr.message || mapErr}`, 'run');
+        })
+        .finally(() => {
+          pending -= 1;
+          if (pending === 0) {
+            renderPreview();
+            renderTextureList();
+            isStepRunning = false;
+          }
+        });
+    });
   }
 
   // Wrapper pour une exécution complète (prépare + exécute)
   function playStep() {
-    const prep = initPipelineExecution();
-    return executePipeline(prep);
+    if (isStepRunning) return;
+    isStepRunning = true;
+    const prepared = initPipelineExecution();
+    if (!prepared) {
+      isStepRunning = false;
+      return;
+    }
+    const { bindGroup, readTasks, dispatchList } = prepared;
+    const commandEncoder = currentDevice.createCommandEncoder();
+    const passEncoderCompute = commandEncoder.beginComputePass();
+    dispatchList.forEach((entry) => {
+      passEncoderCompute.setPipeline(entry.pipeline);
+      passEncoderCompute.setBindGroup(0, bindGroup);
+      passEncoderCompute.dispatchWorkgroups(entry.x, entry.y, entry.z);
+    });
+    passEncoderCompute.end();
+    readTasks.forEach((task) => {
+      commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
+    });
+    currentDevice.queue.submit([commandEncoder.finish()]);
+    handleReadbacks(readTasks);
   }
+
+
+  // ***************************************************************************************
   // ***************************************************************************************
 
   // Pipeline events
@@ -467,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const newTexture = buildTextureFromForm();
     textures.push(newTexture);
     selectedTextureId = newTexture.id;
+    markBindingsDirty();
     renderTextureList();
     renderForm(newTexture);
     renderPreview();
@@ -476,6 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!selectedTextureId) return;
     textures = textures.filter((t) => t.id !== selectedTextureId);
     selectedTextureId = textures[0]?.id || null;
+    markBindingsDirty();
     renderTextureList();
     if (selectedTextureId) {
       const tex = textures.find((t) => t.id === selectedTextureId);
@@ -489,6 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tex = textures.find((t) => t.id === selectedTextureId);
     if (!tex) return;
     regenerateValues(tex);
+    markBindingsDirty();
     renderPreview();
   });
 
@@ -498,10 +525,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const newTexture = buildTextureFromForm();
       textures.push(newTexture);
       selectedTextureId = newTexture.id;
+      markBindingsDirty();
     } else {
       const tex = textures.find((t) => t.id === selectedTextureId);
       if (tex) {
         applyFormToTexture(tex);
+        markBindingsDirty();
       }
     }
     renderTextureList();
@@ -1175,9 +1204,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         readTasks.push({ dst: readBuffer, src: bufEntry.buffer, size: byteLength, tex: info.tex });
       }
+      bindingMetas.set(binding, info);
     });
 
     return { entries, readTasks };
+  }
+
+  function uploadInitialTextureBuffers() {
+    if (initialUploadDone) return;
+    bindingMetas.forEach((info, binding) => {
+      if (!info.tex) return;
+      const bufEntry = bindingBuffers.get(binding);
+      if (!bufEntry) return;
+      const flat = flattenTextureToTypedArray(info.tex);
+      currentDevice.queue.writeBuffer(
+        bufEntry.buffer,
+        0,
+        flat.buffer,
+        flat.byteOffset,
+        flat.byteLength,
+      );
+    });
+    initialUploadDone = true;
   }
 
   function updateTextureValuesFromFlat(tex, flatArray) {
@@ -1198,6 +1246,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function flattenTextureToTypedArray(tex) {
+    const { x, y, z } = tex.size;
+    const total = x * y * z;
+    const isFloat = tex.type === 'float';
+    const flat = isFloat ? new Float32Array(total) : new Int32Array(total);
+    let ptr = 0;
+    for (let k = 0; k < z; k += 1) {
+      for (let j = 0; j < y; j += 1) {
+        for (let i = 0; i < x; i += 1) {
+          const val = tex.values?.[k]?.[j]?.[i];
+          flat[ptr] = typeof val === 'number' ? val : 0;
+          ptr += 1;
+        }
+      }
+    }
+    return flat;
+  }
+
   function resetGPUState() {
     computePipelines = [];
     lastCompiledWGSL = '';
@@ -1209,6 +1275,7 @@ document.addEventListener('DOMContentLoaded', () => {
       currentDevice.destroy();
     }
     currentDevice = null;
+    markBindingsDirty();
   }
 
   function logConsole(message, meta = '') {
