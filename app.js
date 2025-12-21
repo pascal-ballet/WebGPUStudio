@@ -528,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderShaderEditor(shader);
     pipeline.forEach((pipe) => {
       if (!pipe.dispatch) {
-        pipe.dispatch = { x: 32, y: 32, z: 1 };
+        pipe.dispatch = { x: 4, y: 4, z: 1 };
       }
     });
     renderPipelineViews();
@@ -793,7 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `pipe-${Date.now()}`,
       name: `Étape ${idx}`,
       shaderId,
-      dispatch: { x: 32, y: 32, z: 1 },
+      dispatch: { x: 4, y: 4, z: 1 },
     };
   }
 
@@ -881,8 +881,8 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       pipelineShaderSelect.value = pipe.shaderId || shaders[0].id;
     }
-    pipelineForm.pDispatchX.value = pipe.dispatch?.x ?? 64;
-    pipelineForm.pDispatchY.value = pipe.dispatch?.y ?? 64;
+    pipelineForm.pDispatchX.value = pipe.dispatch?.x ?? 4;
+    pipelineForm.pDispatchY.value = pipe.dispatch?.y ?? 4;
     pipelineForm.pDispatchZ.value = pipe.dispatch?.z ?? 1;
   }
 
@@ -1435,7 +1435,7 @@ document.addEventListener('DOMContentLoaded', () => {
       '',
       '@compute @workgroup_size(8, 8, 1)',
       `fn ${entryName}(@builtin(global_invocation_id) gid : vec3<u32>) {`,
-      '    let index = gid.y * 64u + gid.x;',
+      '    let index = gid.y * 32u + gid.x;',
       '    if (index < arrayLength(&texture1)) {',
       '        texture1[index] = texture1[index] + 1;',
       '    }',
