@@ -112,6 +112,28 @@ document.addEventListener('DOMContentLoaded', () => {
     renderConsole();
   });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // ********************
   // Toolbar
   // ********************
@@ -187,6 +209,20 @@ document.addEventListener('DOMContentLoaded', () => {
     logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
   });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // **********************
   // Simulation Timer
   // **********************
@@ -206,9 +242,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Play
   function play() {
     playStep();
   }
+
+  // Wrapper pour une exécution complète (prépare + exécute)
+  function playStep() {
+    if (isStepRunning) return;
+    isStepRunning = true;
+    const prepared = initPipelineExecution();
+    if (!prepared) {
+      isStepRunning = false;
+      return;
+    }
+    const { bindGroup, readTasks, dispatchList } = prepared;
+    const commandEncoder = currentDevice.createCommandEncoder();
+    const passEncoderCompute = commandEncoder.beginComputePass();
+    dispatchList.forEach((entry) => {
+      passEncoderCompute.setPipeline(entry.pipeline);
+      passEncoderCompute.setBindGroup(0, bindGroup);
+      passEncoderCompute.dispatchWorkgroups(entry.x, entry.y, entry.z);
+    });
+    passEncoderCompute.end();
+    readTasks.forEach((task) => {
+      commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
+    });
+    currentDevice.queue.submit([commandEncoder.finish()]);
+    handleReadbacks(readTasks);
+  }
+
+
+
+
+
+
+
 
   // ********************
   // Toolbar Update
@@ -251,6 +320,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // ********************
+  // Pipeline
+  // ********************
 
   // Prépare bind group + buffers + dispatchList
   function initPipelineExecution() {
@@ -327,33 +412,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Wrapper pour une exécution complète (prépare + exécute)
-  function playStep() {
-    if (isStepRunning) return;
-    isStepRunning = true;
-    const prepared = initPipelineExecution();
-    if (!prepared) {
-      isStepRunning = false;
-      return;
-    }
-    const { bindGroup, readTasks, dispatchList } = prepared;
-    const commandEncoder = currentDevice.createCommandEncoder();
-    const passEncoderCompute = commandEncoder.beginComputePass();
-    dispatchList.forEach((entry) => {
-      passEncoderCompute.setPipeline(entry.pipeline);
-      passEncoderCompute.setBindGroup(0, bindGroup);
-      passEncoderCompute.dispatchWorkgroups(entry.x, entry.y, entry.z);
-    });
-    passEncoderCompute.end();
-    readTasks.forEach((task) => {
-      commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
-    });
-    currentDevice.queue.submit([commandEncoder.finish()]);
-    handleReadbacks(readTasks);
-  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
   // ***************************************************************************************
+  // GUI
   // ***************************************************************************************
 
   // Pipeline events
@@ -1370,11 +1453,7 @@ document.addEventListener('DOMContentLoaded', () => {
       shader.name = proposedName;
       syncShaderEntryName(shader);
     }
-    shader.workgroup = {
-      x: clamp(parseInt(formData.get('wgX'), 10) || shader.workgroup.x, 1, 1024),
-      y: clamp(parseInt(formData.get('wgY'), 10) || shader.workgroup.y, 1, 1024),
-      z: clamp(parseInt(formData.get('wgZ'), 10) || shader.workgroup.z, 1, 64),
-    };
+
     renderShaderForm(shader);
   }
 
@@ -1422,9 +1501,6 @@ document.addEventListener('DOMContentLoaded', () => {
       input.disabled = false;
     });
     shaderForm.shaderName.value = shader.name;
-    shaderForm.wgX.value = shader.workgroup.x;
-    shaderForm.wgY.value = shader.workgroup.y;
-    shaderForm.wgZ.value = shader.workgroup.z;
   }
 
   function renderShaderEditor(shader) {

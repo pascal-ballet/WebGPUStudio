@@ -30,7 +30,7 @@
     <nav class="tabs">
       <button class="tab active" data-tab="textures">Textures</button>
       <button class="tab" data-tab="shaders">Compute Shaders</button>
-      <button class="tab" data-tab="pipeline">Pipeline</button>
+      <button class="tab" data-tab="pipeline">Pass</button>
       <button class="tab" data-tab="functions">Fonctions</button>
       <button class="tab" data-tab="console">Console</button>
     </nav>
@@ -153,18 +153,6 @@
             <input type="text" name="shaderName" required />
           </label>
 
-          <div class="grid-3">
-            <label>Workgroup X
-              <input type="number" name="wgX" min="1" max="1024" value="8" required />
-            </label>
-            <label>Workgroup Y
-              <input type="number" name="wgY" min="1" max="1024" value="8" required />
-            </label>
-            <label>Workgroup Z
-              <input type="number" name="wgZ" min="1" max="64" value="1" required />
-            </label>
-          </div>
-
           <div class="grid-2">
             <button type="submit" class="solid">Appliquer</button>
             <button type="button" class="ghost" id="duplicateShaderBtn">Dupliquer</button>
@@ -177,7 +165,7 @@
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Pipeline</p>
+            <p class="eyebrow">Pipelines</p>
             <h2 class="panel-title">Étapes</h2>
           </div>
           <button class="ghost" id="addPipelineBtn">+ Ajouter</button>
@@ -209,7 +197,7 @@
         </div>
 
         <form id="pipelineForm" class="form">
-          <label>Nom de l'étape
+          <label>Nom du pipeline
             <input type="text" name="stepName" required />
           </label>
 
@@ -217,14 +205,15 @@
             <select name="shaderRef" id="pipelineShaderSelect"></select>
           </label>
 
+          <label>dispatch Workgroups</label>
           <div class="grid-3">
-            <label>Global X
+            <label>x
               <input type="number" name="pGlobalX" min="1" max="65535" value="64" required />
             </label>
-            <label>Global Y
+            <label>y
               <input type="number" name="pGlobalY" min="1" max="65535" value="64" required />
             </label>
-            <label>Global Z
+            <label>z
               <input type="number" name="pGlobalZ" min="1" max="65535" value="1" required />
             </label>
           </div>
