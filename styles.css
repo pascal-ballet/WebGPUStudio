@@ -373,7 +373,7 @@ textarea {
   min-height: 180px;
 }
 
-.timeline-step {
+.timeline-pipe {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -384,13 +384,13 @@ textarea {
   min-width: 180px;
 }
 
-.timeline-step.active {
+.timeline-pipe.active {
   border-color: rgba(124, 247, 196, 0.4);
   box-shadow: 0 0 0 2px rgba(124, 247, 196, 0.12);
   background: linear-gradient(120deg, rgba(124, 247, 196, 0.12), rgba(108, 168, 255, 0.08));
 }
 
-.timeline-step .badge {
+.timeline-pipe .badge {
   background: rgba(124, 247, 196, 0.12);
   color: var(--text);
   border: 1px solid rgba(124, 247, 196, 0.35);
@@ -450,7 +450,7 @@ textarea {
   margin-bottom: 4px;
 }
 
-.timeline-step .meta {
+.timeline-pipe .meta {
   color: var(--muted);
   font-size: 12px;
 }

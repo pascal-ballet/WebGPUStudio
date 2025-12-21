@@ -69,14 +69,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let shaders = [];
   let selectedShaderId = null;
   let pipeline = [];
-  let selectedStepId = null;
+  let selectedPipeId = null;
   let pipelineShaderChoiceId = null;
   let functionsStore = [];
   let selectedFunctionId = null;
   let consoleMessages = [];
   let prep = null;
   let bindingsDirty = true; // force regen des bind groups/read buffers quand besoin
-  let isStepRunning = false; // Empêche les appels concurrents à playStep
+  let isStepRunning = false; // Empêche les appels concurrents à playSimulationStep
   let bindingMetas = new Map();
   let initialUploadDone = false;
 
@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   stepBtn.addEventListener('click', async () => { // STEP BUTTON
     if (stepBtn.style.color === 'grey') return;
-    playStep();
+    playSimulationStep();
     isRunning = true;
     isPaused = true;
     updateButtons();
@@ -244,11 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Play
   function play() {
-    playStep();
+    playSimulationStep();
   }
 
   // Wrapper pour une exécution complète (prépare + exécute)
-  function playStep() {
+  function playSimulationStep() {
     if (isStepRunning) return;
     isStepRunning = true;
     const prepared = initPipelineExecution();
@@ -361,17 +361,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const bindGroup = currentDevice.createBindGroup({ layout: bindGroupLayout, entries });
     const dispatchList = pipeline
-      .map((step, idx) => {
-        const pipeEntry = computePipelines.find((p) => p.stepId === step.id);
+      .map((pipe, idx) => {
+        const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
         if (!pipeEntry) {
           logConsole(`Étape ${idx + 1}: pipeline introuvable.`, 'run');
           return null;
         }
         return {
           pipeline: pipeEntry.pipeline,
-          x: step.global?.x || 1,
-          y: step.global?.y || 1,
-          z: step.global?.z || 1,
+          x: pipe.dispatch?.x || 1,
+          y: pipe.dispatch?.y || 1,
+          z: pipe.dispatch?.z || 1,
         };
       })
       .filter(Boolean);
@@ -443,33 +443,33 @@ document.addEventListener('DOMContentLoaded', () => {
   addPipelineBtn.addEventListener('click', () => {
     if (!shaders.length) return;
     const shaderId = pipelineShaderChoiceId || shaders[0].id;
-    const step = buildPipelineStep(shaderId);
-    pipeline.push(step);
-    selectedStepId = step.id;
+    const pipe = buildPipelinePipe(shaderId);
+    pipeline.push(pipe);
+    selectedPipeId = pipe.id;
     renderPipelineViews();
   });
 
   removePipelineBtn.addEventListener('click', () => {
-    if (!selectedStepId) return;
-    pipeline = pipeline.filter((s) => s.id !== selectedStepId);
-    selectedStepId = pipeline[0]?.id || null;
+    if (!selectedPipeId) return;
+    pipeline = pipeline.filter((s) => s.id !== selectedPipeId);
+    selectedPipeId = pipeline[0]?.id || null;
     renderPipelineViews();
   });
 
-  moveUpBtn.addEventListener('click', () => moveStep(-1));
-  moveDownBtn.addEventListener('click', () => moveStep(1));
+  moveUpBtn.addEventListener('click', () => movePipe(-1));
+  moveDownBtn.addEventListener('click', () => movePipe(1));
 
   pipelineForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const step = pipeline.find((s) => s.id === selectedStepId);
-    if (!step) return;
+    const pipe = pipeline.find((s) => s.id === selectedPipeId);
+    if (!pipe) return;
     const formData = new FormData(pipelineForm);
-    step.name = (formData.get('stepName') || step.name).trim() || step.name;
-    step.shaderId = formData.get('shaderRef') || step.shaderId;
-    step.global = {
-      x: clamp(parseInt(formData.get('pGlobalX'), 10) || step.global?.x || 1, 1, 65535),
-      y: clamp(parseInt(formData.get('pGlobalY'), 10) || step.global?.y || 1, 1, 65535),
-      z: clamp(parseInt(formData.get('pGlobalZ'), 10) || step.global?.z || 1, 1, 65535),
+    pipe.name = (formData.get('pipeName') || pipe.name).trim() || pipe.name;
+    pipe.shaderId = formData.get('shaderRef') || pipe.shaderId;
+    pipe.dispatch = {
+      x: clamp(parseInt(formData.get('pDispatchX'), 10) || pipe.dispatch?.x || 1, 1, 65535),
+      y: clamp(parseInt(formData.get('pDispatchY'), 10) || pipe.dispatch?.y || 1, 1, 65535),
+      z: clamp(parseInt(formData.get('pDispatchZ'), 10) || pipe.dispatch?.z || 1, 1, 65535),
     };
     renderPipelineViews();
   });
@@ -526,9 +526,9 @@ document.addEventListener('DOMContentLoaded', () => {
     renderShaderList();
     renderShaderForm(shader);
     renderShaderEditor(shader);
-    pipeline.forEach((step) => {
-      if (!step.global) {
-        step.global = { x: 32, y: 32, z: 1 };
+    pipeline.forEach((pipe) => {
+      if (!pipe.dispatch) {
+        pipe.dispatch = { x: 32, y: 32, z: 1 };
       }
     });
     renderPipelineViews();
@@ -542,8 +542,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pipelineShaderChoiceId === removedId) {
       pipelineShaderChoiceId = shaders[0]?.id || null;
     }
-    pipeline.forEach((step) => {
-      if (step.shaderId === removedId) step.shaderId = null;
+    pipeline.forEach((pipe) => {
+      if (pipe.shaderId === removedId) pipe.shaderId = null;
     });
     renderShaderList();
     const current = shaders.find((s) => s.id === selectedShaderId);
@@ -786,14 +786,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return `texture${maxIdx + 1}`;
   }
 
-  function buildPipelineStep(shaderIdParam) {
+  function buildPipelinePipe(shaderIdParam) {
     const idx = pipeline.length + 1;
     const shaderId = shaderIdParam || shaders[0]?.id || null;
     return {
-      id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `step-${Date.now()}`,
+      id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `pipe-${Date.now()}`,
       name: `Étape ${idx}`,
       shaderId,
-      global: { x: 32, y: 32, z: 1 },
+      dispatch: { x: 32, y: 32, z: 1 },
     };
   }
 
@@ -828,26 +828,26 @@ document.addEventListener('DOMContentLoaded', () => {
     pipelineTimeline.innerHTML = '<p class="eyebrow">Aucune étape dans le pipeline.</p>';
     return;
   }
-  pipeline.forEach((step, index) => {
+  pipeline.forEach((pipe, index) => {
       const block = document.createElement('div');
-      block.className = 'timeline-step';
+      block.className = 'timeline-pipe';
         block.draggable = true;
-      if (step.id === selectedStepId) block.classList.add('active');
+      if (pipe.id === selectedPipeId) block.classList.add('active');
       const badge = document.createElement('div');
       badge.className = 'badge';
       badge.textContent = index + 1;
       const content = document.createElement('div');
       const title = document.createElement('div');
-      title.textContent = step.name;
+      title.textContent = pipe.name;
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = `${pipelineShaderLabel(step.shaderId)} · Global ${step.global?.x ?? 1}×${step.global?.y ?? 1}×${step.global?.z ?? 1}`;
+      meta.textContent = `${pipelineShaderLabel(pipe.shaderId)} · Dispatch ${pipe.dispatch?.x ?? 1}×${pipe.dispatch?.y ?? 1}×${pipe.dispatch?.z ?? 1}`;
       content.appendChild(title);
       content.appendChild(meta);
       block.appendChild(badge);
       block.appendChild(content);
       block.addEventListener('click', () => {
-        selectedStepId = step.id;
+        selectedPipeId = pipe.id;
         renderPipelineViews();
       });
       pipelineTimeline.appendChild(block);
@@ -858,12 +858,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const inputs = pipelineForm.querySelectorAll('input, select, button[type="submit"]');
     if (!pipe) {
       inputs.forEach((el) => { el.disabled = true; });
-      pipelineForm.stepName.value = '';
+      pipelineForm.pipeName.value = '';
       pipelineShaderSelect.innerHTML = '';
       return;
     }
     inputs.forEach((el) => { el.disabled = false; });
-    pipelineForm.stepName.value = pipe.name;
+    pipelineForm.pipeName.value = pipe.name;
     pipelineShaderSelect.innerHTML = '';
     if (!shaders.length) {
       const opt = document.createElement('option');
@@ -881,21 +881,21 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       pipelineShaderSelect.value = pipe.shaderId || shaders[0].id;
     }
-    pipelineForm.pDispatchX.value = pipe.global?.x ?? 64;
-    pipelineForm.pDispatchY.value = pipe.global?.y ?? 64;
-    pipelineForm.pDispatchZ.value = pipe.global?.z ?? 1;
+    pipelineForm.pDispatchX.value = pipe.dispatch?.x ?? 64;
+    pipelineForm.pDispatchY.value = pipe.dispatch?.y ?? 64;
+    pipelineForm.pDispatchZ.value = pipe.dispatch?.z ?? 1;
   }
 
   function renderPipelineViews() {
-    const current = pipeline.find((s) => s.id === selectedStepId) || pipeline[0];
-    selectedStepId = current ? current.id : null;
+    const current = pipeline.find((p) => p.id === selectedPipeId) || pipeline[0];
+    selectedPipeId = current ? current.id : null;
     renderPipelineShaderList();
     renderPipelineTimeline();
     renderPipelineForm(current || null);
-    const idx = pipeline.findIndex((s) => s.id === selectedStepId);
+    const idx = pipeline.findIndex((p) => p.id === selectedPipeId);
     moveUpBtn.disabled = idx <= 0;
     moveDownBtn.disabled = idx === -1 || idx >= pipeline.length - 1;
-    removePipelineBtn.disabled = !selectedStepId;
+    removePipelineBtn.disabled = !selectedPipeId;
   }
 
   function pipelineShaderLabel(shaderId) {
@@ -903,14 +903,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return shader ? `Shader : ${shader.name}` : 'Shader manquant';
   }
 
-  function moveStep(delta) {
-    const idx = pipeline.findIndex((s) => s.id === selectedStepId);
+  function movePipe(delta) {
+    const idx = pipeline.findIndex((p) => p.id === selectedPipeId);
     if (idx === -1) return;
     const newIndex = idx + delta;
     if (newIndex < 0 || newIndex >= pipeline.length) return;
-    const [step] = pipeline.splice(idx, 1);
-    pipeline.splice(newIndex, 0, step);
-    selectedStepId = step.id;
+    const [pipe] = pipeline.splice(idx, 1);
+    pipeline.splice(newIndex, 0, pipe);
+    selectedPipeId = pipe.id;
     renderPipelineViews();
   }
 
@@ -1209,8 +1209,8 @@ document.addEventListener('DOMContentLoaded', () => {
       isCompiled = false; updateButtons();
       return;
     }
-    pipeline.forEach((step, idx) => {
-      const shader = shaders.find((s) => s.id === step.shaderId);
+    pipeline.forEach((pipeStep, idx) => {
+      const shader = shaders.find((s) => s.id === pipeStep.shaderId);
       if (!shader) {
         logConsole(`Étape ${idx + 1}: shader manquant.`, 'pipeline');
         isCompiled = false; updateButtons();
@@ -1218,11 +1218,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const entryPoint = sanitizeEntryName(shader.name);
       try {
-        const pipe = device.createComputePipeline({
+        const computePipe = device.createComputePipeline({
           layout: 'auto',
           compute: { module, entryPoint },
         });
-        computePipelines.push({ stepId: step.id, pipeline: pipe });
+        computePipelines.push({ pipeId: pipeStep.id, pipeline: computePipe });
         logConsole(`Pipeline étape ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
         isCompiled = true; updateButtons();
       } catch (err) {
@@ -1404,9 +1404,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function seedInitialPipeline() {
     if (!shaders.length) return;
-    const step = buildPipelineStep();
-    pipeline.push(step);
-    selectedStepId = step.id;
+    const pipe = buildPipelinePipe();
+    pipeline.push(pipe);
+    selectedPipeId = pipe.id;
     renderPipelineViews();
   }
 
