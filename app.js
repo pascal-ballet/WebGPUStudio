@@ -854,16 +854,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderPipelineForm(step) {
+  function renderPipelineForm(pipe) {
     const inputs = pipelineForm.querySelectorAll('input, select, button[type="submit"]');
-    if (!step) {
+    if (!pipe) {
       inputs.forEach((el) => { el.disabled = true; });
       pipelineForm.stepName.value = '';
       pipelineShaderSelect.innerHTML = '';
       return;
     }
     inputs.forEach((el) => { el.disabled = false; });
-    pipelineForm.stepName.value = step.name;
+    pipelineForm.stepName.value = pipe.name;
     pipelineShaderSelect.innerHTML = '';
     if (!shaders.length) {
       const opt = document.createElement('option');
@@ -879,11 +879,11 @@ document.addEventListener('DOMContentLoaded', () => {
         opt.textContent = shader.name;
         pipelineShaderSelect.appendChild(opt);
       });
-      pipelineShaderSelect.value = step.shaderId || shaders[0].id;
+      pipelineShaderSelect.value = pipe.shaderId || shaders[0].id;
     }
-    pipelineForm.pGlobalX.value = step.global?.x ?? 64;
-    pipelineForm.pGlobalY.value = step.global?.y ?? 64;
-    pipelineForm.pGlobalZ.value = step.global?.z ?? 1;
+    pipelineForm.pDispatchX.value = pipe.global?.x ?? 64;
+    pipelineForm.pDispatchY.value = pipe.global?.y ?? 64;
+    pipelineForm.pDispatchZ.value = pipe.global?.z ?? 1;
   }
 
   function renderPipelineViews() {
