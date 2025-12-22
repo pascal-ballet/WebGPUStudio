@@ -1889,13 +1889,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       uniform sampler3D uTex;
       uniform mat3 uRot;
       uniform float uAlphaScale;
+      uniform vec3 uScale;
       const vec3 center = vec3(0.5);
 
       // Simple ray-box intersection against [0,1]^3
-      bool intersectBox(vec3 orig, vec3 dir, out float tmin, out float tmax) {
+      bool intersectBox(vec3 orig, vec3 dir, vec3 bmin, vec3 bmax, out float tmin, out float tmax) {
         vec3 inv = 1.0 / dir;
-        vec3 t0s = (vec3(0.0) - orig) * inv;
-        vec3 t1s = (vec3(1.0) - orig) * inv;
+        vec3 t0s = (bmin - orig) * inv;
+        vec3 t1s = (bmax - orig) * inv;
         vec3 tsmaller = min(t0s, t1s);
         vec3 tbigger = max(t0s, t1s);
         tmin = max(max(tsmaller.x, tsmaller.y), tsmaller.z);
@@ -1908,8 +1909,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         vec3 dir = normalize(uRot * vec3(uv, 1.3));
         vec3 camOffset = uRot * vec3(0.0, 0.0, -1.2);
         vec3 camera = center + camOffset;
+        vec3 halfS = 0.5 * uScale;
+        vec3 bmin = center - halfS;
+        vec3 bmax = center + halfS;
         float tmin; float tmax;
-        if (!intersectBox(camera, dir, tmin, tmax)) {
+        if (!intersectBox(camera, dir, bmin, bmax, tmin, tmax)) {
           outColor = vec4(0.0);
           return;
         }
@@ -1919,7 +1923,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         for (int i = 0; i < 192; i++) {
           if (t > tmax || acc.a > 0.98) break;
           vec3 p = camera + dir * t;
-          vec4 c = texture(uTex, p);
+          vec3 uvw = (p - bmin) / uScale;
+          vec4 c = texture(uTex, uvw);
           float a = c.a * uAlphaScale;
           acc.rgb += (1.0 - acc.a) * c.rgb * a;
           acc.a += (1.0 - acc.a) * a;
@@ -1933,6 +1938,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.posLoc = 0;
       this.rotLoc = gl.getUniformLocation(this.program, 'uRot');
       this.alphaLoc = gl.getUniformLocation(this.program, 'uAlphaScale');
+      this.scaleLoc = gl.getUniformLocation(this.program, 'uScale');
       this.quadVbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -1998,6 +2004,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (!this.isValid) return;
       const gl = this.gl;
       this.size = [tex.size.x, tex.size.y, tex.size.z];
+      const maxDim = Math.max(tex.size.x, tex.size.y, tex.size.z, 1);
+      this.scale = [
+        tex.size.x / maxDim,
+        tex.size.y / maxDim,
+        tex.size.z / maxDim,
+      ];
       const data = new Uint8Array(tex.size.x * tex.size.y * tex.size.z * 4);
       let ptr = 0;
       for (let z = 0; z < tex.size.z; z += 1) {
@@ -2033,10 +2045,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const dpr = window.devicePixelRatio || 1;
       const rect = this.container.getBoundingClientRect();
       const w = Math.max(200, rect.width);
-      const h = 420;
-      if (this.canvas.width !== Math.floor(w * dpr) || this.canvas.height !== Math.floor(h * dpr)) {
-        this.canvas.width = Math.floor(w * dpr);
-        this.canvas.height = Math.floor(h * dpr);
+      const h = Math.max(200, Math.min(640, w)); // garder le volume à l'échelle carrée
+      const dw = Math.floor(w * dpr);
+      const dh = Math.floor(h * dpr);
+      if (this.canvas.width !== dw || this.canvas.height !== dh) {
+        this.canvas.width = dw;
+        this.canvas.height = dh;
         this.canvas.style.width = `${w}px`;
         this.canvas.style.height = `${h}px`;
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -2067,6 +2081,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       ];
       gl.uniformMatrix3fv(this.rotLoc, false, rot);
       gl.uniform1f(this.alphaLoc, 0.35);
+      if (this.scaleLoc && this.scale) {
+        gl.uniform3fv(this.scaleLoc, this.scale);
+      }
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
