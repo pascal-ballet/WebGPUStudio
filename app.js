@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let simulationSteps = 0;
   let stepCounterBinding = null;
   let sharedPipelineLayout = null;
-  let previewVisualMode = 'values';
+  let previewVisualMode = 'rgba';
   let voxelRenderer = null;
 
   function renderStepCounter() {
@@ -143,9 +143,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (previewModeSelect) {
     previewModeSelect.addEventListener('change', (e) => {
-      previewVisualMode = e.target.value === 'rgba' ? 'rgba' : 'values';
+      previewVisualMode = 'rgba';
       renderPreview();
     });
+    previewModeSelect.value = 'rgba';
   }
 
 
