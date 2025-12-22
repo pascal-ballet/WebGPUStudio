@@ -378,8 +378,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+// example WGSL : Brown transparency
+/*
+@compute @workgroup_size(4, 4, 4)
+fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
+    let index = gid.z * 32u * 32u + gid.y * 32u + gid.x;
+    if (gid.y <= 10) {
+        //texture1[index] = 0xFFFFFF;
+    } else {
+        texture1[index] = 0x123456AA;
+    }
+}
+*/
 
-// example wggl
+// example WGSL : Game Of Life
 /*
 @group(0) @binding(0) var<storage, read_write> texture1 : array<u32>;
 @group(0) @binding(1) var<storage, read_write> texture2 : array<u32>;
