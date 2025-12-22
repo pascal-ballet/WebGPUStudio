@@ -355,7 +355,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+// example wggl
+/*
+@group(0) @binding(0) var<storage, read_write> texture1 : array<u32>;
+@group(0) @binding(1) var<storage, read_write> texture2 : array<u32>;
 
+@compute @workgroup_size(8, 8, 1)
+fn Init(@builtin(global_invocation_id) gid : vec3<u32>) {
+    let index = gid.y * 32u + gid.x;
+    if (index < arrayLength(&texture1)) {
+        if (stepCounter == 0) {
+            texture1[index] = texture1[index] % 2;
+        }
+    }
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn gol(@builtin(global_invocation_id) gid : vec3<u32>) {
+    let index = gid.y * 32u + gid.x;
+    if (stepCounter >= 1 && gid.x >= 1 && gid.x <= 30 && gid.y >= 1 && gid.y <= 30) {
+        let nb =     texture1[index-1] + texture1[index+1] + texture1[index-32] + texture1[index+32]
+                        +  texture1[index-1+32] + texture1[index+1+32] + texture1[index-32-1] + texture1[index-32+1];
+        if( texture1[index] == 0 ) { // dead cell
+            if ( nb == 3 ) {
+                texture2[index] = 1;
+            } else {
+                 texture2[index] = 0;
+            }
+        } else { // living cell
+            if ( nb == 2 || nb == 3 ) {
+              texture2[index] = 1;
+            } else {
+              texture2[index] = 0;
+            }
+        }
+    }
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn cpy(@builtin(global_invocation_id) gid : vec3<u32>) {
+    let index = gid.y * 32u + gid.x;
+    if (index < arrayLength(&texture1)) {
+        texture1[index] = texture2[index] ;
+    }
+}
+
+
+*/
 
 
 
