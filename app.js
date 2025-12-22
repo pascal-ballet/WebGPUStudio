@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
   const stepCounter = document.getElementById('stepCounter');
+  const previewModeSelect = document.getElementById('previewModeSelect');
 
   const compileBtn  = document.getElementById('compileBtn');
   const stepBtn     = document.getElementById('stepBtn');
@@ -83,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let simulationSteps = 0;
   let stepCounterBinding = null;
   let sharedPipelineLayout = null;
+  let previewVisualMode = 'values';
 
   function renderStepCounter() {
     if (!stepCounter) return;
@@ -137,6 +139,13 @@ document.addEventListener('DOMContentLoaded', () => {
     consoleMessages = [];
     renderConsole();
   });
+
+  if (previewModeSelect) {
+    previewModeSelect.addEventListener('change', (e) => {
+      previewVisualMode = e.target.value === 'rgba' ? 'rgba' : 'values';
+      renderPreview();
+    });
+  }
 
 
 
@@ -1741,15 +1750,24 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (previewMode === '2d') {
       preview2D.classList.remove('hidden');
       preview3D.classList.add('hidden');
-      render2D(tex);
+      if (previewVisualMode === 'rgba') {
+        render2DImage(tex);
+      } else {
+        render2D(tex);
+      }
     } else {
       preview2D.classList.add('hidden');
       preview3D.classList.remove('hidden');
-      render3D(tex);
+      if (previewVisualMode === 'rgba') {
+        render3DImage(tex);
+      } else {
+        render3D(tex);
+      }
     }
   }
 
   function render2D(tex) {
+    preview2D.classList.remove('image-mode');
     const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
     sliceLabel.textContent = `Z = ${sliceIndex}`;
     const layer = tex.values[sliceIndex] || [];
@@ -1763,6 +1781,50 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         preview2D.appendChild(cell);
       });
     });
+  }
+
+  function valueToRGBA(val, isFloat) {
+    if (isFloat) {
+      const f = Math.max(0, Math.min(1, Number(val) || 0));
+      const c = Math.round(f * 255);
+      return [c, c, c, 255];
+    }
+    const v = (Number(val) || 0) >>> 0;
+    return [
+      v & 0xff,
+      (v >> 8) & 0xff,
+      (v >> 16) & 0xff,
+      (v >> 24) & 0xff,
+    ];
+  }
+
+  function render2DImage(tex) {
+    preview2D.classList.add('image-mode');
+    const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
+    sliceLabel.textContent = `Z = ${sliceIndex}`;
+    const layer = tex.values[sliceIndex] || [];
+    preview2D.innerHTML = '';
+    preview2D.style.gridTemplateColumns = '';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'texture-canvas';
+    canvas.width = tex.size.x;
+    canvas.height = tex.size.y;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(tex.size.x, tex.size.y);
+    let ptr = 0;
+    for (let j = 0; j < tex.size.y; j += 1) {
+      for (let i = 0; i < tex.size.x; i += 1) {
+        const v = layer[j]?.[i];
+        const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
+        imageData.data[ptr] = r;
+        imageData.data[ptr + 1] = g;
+        imageData.data[ptr + 2] = b;
+        imageData.data[ptr + 3] = a || 255;
+        ptr += 4;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+    preview2D.appendChild(canvas);
   }
 
   function render3D(tex) {
@@ -1785,6 +1847,38 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         });
       });
       slice.appendChild(grid);
+      preview3D.appendChild(slice);
+    }
+  }
+
+  function render3DImage(tex) {
+    preview3D.innerHTML = '';
+    for (let k = 0; k < tex.size.z; k += 1) {
+      const slice = document.createElement('div');
+      slice.className = 'slice';
+      const title = document.createElement('h4');
+      title.textContent = `Couche Z = ${k}`;
+      slice.appendChild(title);
+      const canvas = document.createElement('canvas');
+      canvas.className = 'texture-canvas';
+      canvas.width = tex.size.x;
+      canvas.height = tex.size.y;
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(tex.size.x, tex.size.y);
+      let ptr = 0;
+      for (let j = 0; j < tex.size.y; j += 1) {
+        for (let i = 0; i < tex.size.x; i += 1) {
+          const v = tex.values[k]?.[j]?.[i];
+          const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
+          imageData.data[ptr] = r;
+          imageData.data[ptr + 1] = g;
+          imageData.data[ptr + 2] = b;
+          imageData.data[ptr + 3] = a || 255;
+          ptr += 4;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+      slice.appendChild(canvas);
       preview3D.appendChild(slice);
     }
   }

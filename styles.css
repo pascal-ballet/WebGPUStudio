@@ -242,9 +242,25 @@ body {
 
 .preview-meta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   color: var(--muted);
+  font-size: 13px;
+}
+
+.preview-meta label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-meta select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 10px;
   font-size: 13px;
 }
 
@@ -262,9 +278,20 @@ input[type="range"] {
   position: relative;
 }
 
+.texture-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  image-rendering: pixelated;
+}
+
 .preview-grid {
   display: grid;
   gap: 4px;
+}
+
+.preview-grid.image-mode {
+  display: block;
 }
 
 .cell {
