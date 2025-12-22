@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let stepCounterBinding = null;
   let sharedPipelineLayout = null;
   let previewVisualMode = 'values';
+  let voxelRenderer = null;
 
   function renderStepCounter() {
     if (!stepCounter) return;
@@ -1851,36 +1852,202 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
   }
 
-  function render3DImage(tex) {
-    preview3D.innerHTML = '';
-    for (let k = 0; k < tex.size.z; k += 1) {
-      const slice = document.createElement('div');
-      slice.className = 'slice';
-      const title = document.createElement('h4');
-      title.textContent = `Couche Z = ${k}`;
-      slice.appendChild(title);
-      const canvas = document.createElement('canvas');
-      canvas.className = 'texture-canvas';
-      canvas.width = tex.size.x;
-      canvas.height = tex.size.y;
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.createImageData(tex.size.x, tex.size.y);
+  class VoxelRenderer {
+    constructor(container) {
+      this.container = container;
+      this.canvas = document.createElement('canvas');
+      this.canvas.className = 'voxel-canvas';
+      this.gl = this.canvas.getContext('webgl2', { alpha: false, antialias: true });
+      this.isValid = !!this.gl;
+      this.program = null;
+      this.tex = null;
+      this.size = [1, 1, 1];
+      if (this.isValid) {
+        this.initGL();
+      }
+    }
+
+    initGL() {
+      const gl = this.gl;
+      const vs = `#version 300 es
+      layout(location=0) in vec2 position;
+      out vec2 vUV;
+      void main() {
+        vUV = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+      }`;
+      const fs = `#version 300 es
+      precision highp float;
+      in vec2 vUV;
+      out vec4 outColor;
+      uniform sampler3D uTex;
+      uniform mat3 uRot;
+      vec3 camera = vec3(0.5, 0.5, -1.2);
+
+      // Simple ray-box intersection against [0,1]^3
+      bool intersectBox(vec3 orig, vec3 dir, out float tmin, out float tmax) {
+        vec3 inv = 1.0 / dir;
+        vec3 t0s = (vec3(0.0) - orig) * inv;
+        vec3 t1s = (vec3(1.0) - orig) * inv;
+        vec3 tsmaller = min(t0s, t1s);
+        vec3 tbigger = max(t0s, t1s);
+        tmin = max(max(tsmaller.x, tsmaller.y), tsmaller.z);
+        tmax = min(min(tbigger.x, tbigger.y), tbigger.z);
+        return tmax >= max(tmin, 0.0);
+      }
+
+      void main() {
+        vec2 uv = vUV * 2.0 - 1.0;
+        vec3 dir = normalize(uRot * vec3(uv, 1.3));
+        float tmin; float tmax;
+        if (!intersectBox(camera, dir, tmin, tmax)) {
+          outColor = vec4(0.0);
+          return;
+        }
+        float t = max(tmin, 0.0);
+        vec4 acc = vec4(0.0);
+        // fixed step raymarch
+        for (int i = 0; i < 192; i++) {
+          if (t > tmax || acc.a > 0.98) break;
+          vec3 p = camera + dir * t;
+          vec4 c = texture(uTex, p);
+          float a = c.a;
+          acc.rgb += (1.0 - acc.a) * c.rgb * a;
+          acc.a += (1.0 - acc.a) * a;
+          t += 0.01;
+        }
+        outColor = acc;
+      }`;
+      const vsObj = this.compile(gl.VERTEX_SHADER, vs);
+      const fsObj = this.compile(gl.FRAGMENT_SHADER, fs);
+      this.program = this.link(vsObj, fsObj);
+      this.posLoc = 0;
+      this.rotLoc = gl.getUniformLocation(this.program, 'uRot');
+      this.quadVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      this.tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_3D, this.tex);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    }
+
+    compile(type, src) {
+      const gl = this.gl;
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(sh));
+      }
+      return sh;
+    }
+
+    link(vs, fs) {
+      const gl = this.gl;
+      const prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.bindAttribLocation(prog, 0, 'position');
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(prog));
+      }
+      return prog;
+    }
+
+    updateTexture(tex) {
+      if (!this.isValid) return;
+      const gl = this.gl;
+      this.size = [tex.size.x, tex.size.y, tex.size.z];
+      const data = new Uint8Array(tex.size.x * tex.size.y * tex.size.z * 4);
       let ptr = 0;
-      for (let j = 0; j < tex.size.y; j += 1) {
-        for (let i = 0; i < tex.size.x; i += 1) {
-          const v = tex.values[k]?.[j]?.[i];
-          const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
-          imageData.data[ptr] = r;
-          imageData.data[ptr + 1] = g;
-          imageData.data[ptr + 2] = b;
-          imageData.data[ptr + 3] = a || 255;
-          ptr += 4;
+      for (let z = 0; z < tex.size.z; z += 1) {
+        for (let y = 0; y < tex.size.y; y += 1) {
+          for (let x = 0; x < tex.size.x; x += 1) {
+            const v = tex.values[z]?.[y]?.[x];
+            const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
+            data[ptr] = r;
+            data[ptr + 1] = g;
+            data[ptr + 2] = b;
+            data[ptr + 3] = a || 255;
+            ptr += 4;
+          }
         }
       }
-      ctx.putImageData(imageData, 0, 0);
-      slice.appendChild(canvas);
-      preview3D.appendChild(slice);
+      gl.bindTexture(gl.TEXTURE_3D, this.tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage3D(
+        gl.TEXTURE_3D,
+        0,
+        gl.RGBA8,
+        tex.size.x,
+        tex.size.y,
+        tex.size.z,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        data,
+      );
     }
+
+    resize() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = this.container.getBoundingClientRect();
+      const w = Math.max(200, rect.width);
+      const h = 420;
+      if (this.canvas.width !== Math.floor(w * dpr) || this.canvas.height !== Math.floor(h * dpr)) {
+        this.canvas.width = Math.floor(w * dpr);
+        this.canvas.height = Math.floor(h * dpr);
+        this.canvas.style.width = `${w}px`;
+        this.canvas.style.height = `${h}px`;
+        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      }
+    }
+
+    render() {
+      if (!this.isValid) return;
+      this.resize();
+      if (!this.canvas.parentNode) {
+        this.container.appendChild(this.canvas);
+      }
+      const gl = this.gl;
+      gl.useProgram(this.program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
+      gl.enableVertexAttribArray(this.posLoc);
+      gl.vertexAttribPointer(this.posLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_3D, this.tex);
+      const rotX = -0.75;
+      const rotY = 0.9;
+      const cx = Math.cos(rotX); const sx = Math.sin(rotX);
+      const cy = Math.cos(rotY); const sy = Math.sin(rotY);
+      const rot = [
+        cy, 0, -sy,
+        sx * sy, cx, sx * cy,
+        cx * sy, -sx, cx * cy,
+      ];
+      gl.uniformMatrix3fv(this.rotLoc, false, rot);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+  }
+
+  function render3DImage(tex) {
+    preview3D.innerHTML = '';
+    if (!voxelRenderer) {
+      voxelRenderer = new VoxelRenderer(preview3D);
+    }
+    if (!voxelRenderer.isValid) {
+      preview3D.innerHTML = '<p class="eyebrow">WebGL2 requis pour l’aperçu 3D RGBA.</p>';
+      return;
+    }
+    voxelRenderer.updateTexture(tex);
+    voxelRenderer.render();
   }
 
   function updateSliceControl(tex) {
