@@ -1772,6 +1772,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         render2D(tex);
       }
     } else {
+      setPreviewValue(null);
       preview2D.classList.add('hidden');
       preview3D.classList.remove('hidden');
       if (previewVisualMode === 'rgba') {
@@ -1874,8 +1875,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           const cell = document.createElement('div');
           cell.className = 'cell';
           cell.textContent = tex.type === 'float' ? Number(val).toFixed(3) : Math.round(val);
-          cell.addEventListener('mouseenter', () => setPreviewValue(val));
-          cell.addEventListener('mouseleave', () => setPreviewValue(null));
           grid.appendChild(cell);
         });
       });
@@ -2080,7 +2079,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       let t = Math.max(0, tmin);
       const alphaScale = 0.35;
       const tex = this.currentTex;
-      for (let i = 0; i < 192; i += 1) {
+      const maxDim = Math.max(tex.size.x, tex.size.y, tex.size.z, 1);
+      const minScale = Math.min(this.scale[0], this.scale[1], this.scale[2]);
+      const step = (minScale / maxDim) * 1.1;
+      for (let i = 0; i < 512; i += 1) {
         if (t > tmax) break;
         const p = add3(camera, mul3(dir, t));
         const uvw = [
@@ -2094,11 +2096,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           const iz = Math.floor(uvw[2] * tex.size.z);
           const val = tex.values[iz]?.[iy]?.[ix];
           const [ , , , a ] = valueToRGBA(val, tex.type === 'float');
-          if (((a || 0) / 255) * alphaScale > 0.05) {
+          if (((a || 0) / 255) * alphaScale > 0.02) {
             return val;
           }
         }
-        t += 0.01;
+        t += step;
       }
       return null;
     }
@@ -2221,8 +2223,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function render3DImage(tex) {
     preview3D.innerHTML = '';
     if (!voxelRenderer) {
-      voxelRenderer = new VoxelRenderer(preview3D, setPreviewValue);
+      voxelRenderer = new VoxelRenderer(preview3D, null);
     }
+    // Désactive l'affichage de valeur en 3D
+    voxelRenderer.onHover = null;
     if (!voxelRenderer.isValid) {
       preview3D.innerHTML = '<p class="eyebrow">WebGL2 requis pour l’aperçu 3D RGBA.</p>';
       return;
