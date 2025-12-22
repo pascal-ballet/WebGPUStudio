@@ -1607,8 +1607,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function defaultShaderCode(entryName = 'main') {
     return [
-      '@group(0) @binding(0) var<storage, read_write> texture1 : array<u32>;',
-      '',
       '@compute @workgroup_size(8, 8, 1)',
       `fn ${entryName}(@builtin(global_invocation_id) gid : vec3<u32>) {`,
       '    let index = gid.y * 32u + gid.x;',
