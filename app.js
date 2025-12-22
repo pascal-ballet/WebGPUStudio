@@ -82,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let initialUploadDone = false;
   let simulationSteps = 0;
   let stepCounterBinding = null;
+  let sharedPipelineLayout = null;
 
   function renderStepCounter() {
     if (!stepCounter) return;
@@ -109,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindingMetas = new Map();
     initialUploadDone = false;
     stepCounterBinding = null;
+    sharedPipelineLayout = null;
   }
 
   // Tabs switching
@@ -360,8 +362,10 @@ document.addEventListener('DOMContentLoaded', () => {
 @group(0) @binding(0) var<storage, read_write> texture1 : array<u32>;
 @group(0) @binding(1) var<storage, read_write> texture2 : array<u32>;
 
+@group(0) @binding(2) var<uniform> stepCounter : u32;
+
 @compute @workgroup_size(8, 8, 1)
-fn Init(@builtin(global_invocation_id) gid : vec3<u32>) {
+fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
     let index = gid.y * 32u + gid.x;
     if (index < arrayLength(&texture1)) {
         if (stepCounter == 0) {
@@ -370,8 +374,9 @@ fn Init(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 }
 
+
 @compute @workgroup_size(8, 8, 1)
-fn gol(@builtin(global_invocation_id) gid : vec3<u32>) {
+fn Compute2(@builtin(global_invocation_id) gid : vec3<u32>) {
     let index = gid.y * 32u + gid.x;
     if (stepCounter >= 1 && gid.x >= 1 && gid.x <= 30 && gid.y >= 1 && gid.y <= 30) {
         let nb =     texture1[index-1] + texture1[index+1] + texture1[index-32] + texture1[index+32]
@@ -393,12 +398,13 @@ fn gol(@builtin(global_invocation_id) gid : vec3<u32>) {
 }
 
 @compute @workgroup_size(8, 8, 1)
-fn cpy(@builtin(global_invocation_id) gid : vec3<u32>) {
+fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     let index = gid.y * 32u + gid.x;
-    if (index < arrayLength(&texture1)) {
+    if (stepCounter >= 1 && index < arrayLength(&texture1)) {
         texture1[index] = texture2[index] ;
     }
 }
+
 
 
 */
@@ -1304,6 +1310,17 @@ fn cpy(@builtin(global_invocation_id) gid : vec3<u32>) {
       isCompiled = false; updateButtons();
       return;
     }
+    // Construire un layout commun pour tous les pipelines à partir des bindings WGSL détectés
+    sharedPipelineLayout = null;
+    try {
+      const layoutEntries = deriveLayoutEntriesFromWGSL(lastCompiledWGSL);
+      if (layoutEntries.length) {
+        const bindGroupLayout = device.createBindGroupLayout({ entries: layoutEntries });
+        sharedPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
+      }
+    } catch (err) {
+      logConsole(`Impossible de créer le layout commun: ${err.message || err}`, 'pipeline');
+    }
     pipeline.forEach((pipeStep, idx) => {
       const shader = shaders.find((s) => s.id === pipeStep.shaderId);
       if (!shader) {
@@ -1314,7 +1331,7 @@ fn cpy(@builtin(global_invocation_id) gid : vec3<u32>) {
       const entryPoint = sanitizeEntryName(shader.name);
       try {
         const computePipe = device.createComputePipeline({
-          layout: 'auto',
+          layout: sharedPipelineLayout || 'auto',
           compute: { module, entryPoint },
         });
         computePipelines.push({ pipeId: pipeStep.id, pipeline: computePipe });
@@ -1407,6 +1424,46 @@ fn cpy(@builtin(global_invocation_id) gid : vec3<u32>) {
     });
 
     return { entries, readTasks };
+  }
+
+  function deriveLayoutEntriesFromWGSL(wgsl) {
+    if (!wgsl) return [];
+    const bindings = new Map();
+
+    // Textures declared dans l'UI
+    textures.forEach((tex, idx) => {
+      bindings.set(idx, {
+        binding: idx,
+        type: 'storage',
+      });
+    });
+
+    // Storage buffers détectés dans le WGSL
+    const storageRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<storage,[^>]*>\s*[A-Za-z_][\w]*\s*:/g;
+    let m;
+    while ((m = storageRegex.exec(wgsl)) !== null) {
+      const binding = parseInt(m[1], 10);
+      if (!Number.isNaN(binding)) {
+        bindings.set(binding, { binding, type: 'storage' });
+      }
+    }
+
+    // stepCounter uniform si présent
+    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*stepCounter\s*:\s*u32\s*;/i.exec(wgsl);
+    if (stepMatch) {
+      const binding = parseInt(stepMatch[1], 10);
+      if (!Number.isNaN(binding)) {
+        bindings.set(binding, { binding, type: 'uniform' });
+      }
+    }
+
+    return Array.from(bindings.values())
+      .sort((a, b) => a.binding - b.binding)
+      .map((info) => ({
+        binding: info.binding,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: { type: info.type === 'uniform' ? 'uniform' : 'storage' },
+      }));
   }
 
   function uploadInitialTextureBuffers() {
