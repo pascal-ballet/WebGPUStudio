@@ -256,12 +256,12 @@ document.addEventListener('DOMContentLoaded', () => {
       isStepRunning = false;
       return;
     }
-    const { bindGroup, readTasks, dispatchList } = prepared;
+    const { readTasks, dispatchList } = prepared;
     const commandEncoder = currentDevice.createCommandEncoder();
     const passEncoderCompute = commandEncoder.beginComputePass();
     dispatchList.forEach((entry) => {
       passEncoderCompute.setPipeline(entry.pipeline);
-      passEncoderCompute.setBindGroup(0, bindGroup);
+      passEncoderCompute.setBindGroup(0, entry.bindGroup);
       passEncoderCompute.dispatchWorkgroups(entry.x, entry.y, entry.z);
     });
     passEncoderCompute.end();
@@ -354,12 +354,6 @@ document.addEventListener('DOMContentLoaded', () => {
       logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
       return null;
     }
-    const bindGroupLayout = computePipelines[0]?.pipeline.getBindGroupLayout(0);
-    if (!bindGroupLayout) {
-      logConsole('Impossible de récupérer le layout du bind group.', 'run');
-      return null;
-    }
-    const bindGroup = currentDevice.createBindGroup({ layout: bindGroupLayout, entries });
     const dispatchList = pipeline
       .map((pipe, idx) => {
         const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
@@ -367,15 +361,22 @@ document.addEventListener('DOMContentLoaded', () => {
           logConsole(`Étape ${idx + 1}: pipeline introuvable.`, 'run');
           return null;
         }
+        const layout = pipeEntry.pipeline.getBindGroupLayout(0);
+        if (!layout) {
+          logConsole(`Étape ${idx + 1}: layout introuvable pour le pipeline.`, 'run');
+          return null;
+        }
+        const bindGroup = currentDevice.createBindGroup({ layout, entries });
         return {
           pipeline: pipeEntry.pipeline,
+          bindGroup,
           x: pipe.dispatch?.x || 1,
           y: pipe.dispatch?.y || 1,
           z: pipe.dispatch?.z || 1,
         };
       })
       .filter(Boolean);
-    prep = { bindGroup, readTasks, dispatchList };
+    prep = { readTasks, dispatchList };
     uploadInitialTextureBuffers();
     bindingsDirty = false;
     return prep;
