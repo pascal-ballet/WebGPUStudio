@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const statChars = document.getElementById('statChars');
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
+  const stepCounter = document.getElementById('stepCounter');
 
   const compileBtn  = document.getElementById('compileBtn');
   const stepBtn     = document.getElementById('stepBtn');
@@ -79,6 +80,13 @@ document.addEventListener('DOMContentLoaded', () => {
   let isStepRunning = false; // Empêche les appels concurrents à playSimulationStep
   let bindingMetas = new Map();
   let initialUploadDone = false;
+  let simulationSteps = 0;
+
+  function renderStepCounter() {
+    if (!stepCounter) return;
+    stepCounter.textContent = `Étapes simulées : ${simulationSteps}`;
+  }
+  renderStepCounter();
 
   function markBindingsDirty() {
     bindingsDirty = true;
@@ -203,6 +211,8 @@ document.addEventListener('DOMContentLoaded', () => {
     isRunning  = false;
     isPaused   = false;
     isCompiled = false;
+    simulationSteps = 0;
+    renderStepCounter();
     stopTimer();
     updateButtons();
     resetGPUState();
@@ -269,6 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
       commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
     });
     currentDevice.queue.submit([commandEncoder.finish()]);
+    simulationSteps += 1;
+    renderStepCounter();
     handleReadbacks(readTasks);
   }
 
@@ -1351,6 +1363,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function resetGPUState() {
     computePipelines = [];
     lastCompiledWGSL = '';
+    simulationSteps = 0;
+    renderStepCounter();
     bindingBuffers.forEach((entry) => {
       if (entry?.buffer) entry.buffer.destroy();
     });
