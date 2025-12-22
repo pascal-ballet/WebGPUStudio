@@ -81,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let bindingMetas = new Map();
   let initialUploadDone = false;
   let simulationSteps = 0;
+  let stepCounterBinding = null;
 
   function renderStepCounter() {
     if (!stepCounter) return;
@@ -88,11 +89,26 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   renderStepCounter();
 
+  function updateStepCounterBuffer() {
+    if (stepCounterBinding === null || !currentDevice) return;
+    const bufEntry = bindingBuffers.get(stepCounterBinding);
+    if (!bufEntry) return;
+    const data = new Uint32Array([simulationSteps]);
+    currentDevice.queue.writeBuffer(
+      bufEntry.buffer,
+      0,
+      data.buffer,
+      data.byteOffset,
+      data.byteLength,
+    );
+  }
+
   function markBindingsDirty() {
     bindingsDirty = true;
     prep = null;
     bindingMetas = new Map();
     initialUploadDone = false;
+    stepCounterBinding = null;
   }
 
   // Tabs switching
@@ -213,6 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
     isCompiled = false;
     simulationSteps = 0;
     renderStepCounter();
+    updateStepCounterBuffer();
     stopTimer();
     updateButtons();
     resetGPUState();
@@ -267,6 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const { readTasks, dispatchList } = prepared;
+    updateStepCounterBuffer();
     const commandEncoder = currentDevice.createCommandEncoder();
     const passEncoderCompute = commandEncoder.beginComputePass();
     dispatchList.forEach((entry) => {
@@ -281,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentDevice.queue.submit([commandEncoder.finish()]);
     simulationSteps += 1;
     renderStepCounter();
+    updateStepCounterBuffer();
     handleReadbacks(readTasks);
   }
 
@@ -1104,12 +1123,29 @@ document.addEventListener('DOMContentLoaded', () => {
       .filter(Boolean)
       .join('\n\n');
 
+    const bindingRegex = /@binding\(\s*(\d+)\s*\)/g;
+    let maxBinding = -1;
+    const updateMax = (src) => {
+      let m = null;
+      while ((m = bindingRegex.exec(src)) !== null) {
+        const val = parseInt(m[1], 10);
+        if (!Number.isNaN(val)) maxBinding = Math.max(maxBinding, val);
+      }
+    };
+    updateMax(textureSection);
+    updateMax(shaderSection);
+    const stepBinding = (maxBinding >= 0 ? maxBinding + 1 : 0);
+    const stepSection = `@group(0) @binding(${stepBinding}) var<uniform> stepCounter : u32;`;
+
     return [
       '// --- Fonctions ---',
       fnSection || '// (aucune fonction)',
       '',
       '// --- Textures ---',
       textureSection || '// (aucune texture)',
+      '',
+      '// --- Système ---',
+      stepSection,
       '',
       '// --- Compute Shaders ---',
       shaderSection || '// (aucun compute shader)',
@@ -1258,6 +1294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scalar: tex.type === 'float' ? 'f32' : 'i32',
         length: tex.size.x * tex.size.y * tex.size.z,
         tex,
+        usage: 'storage',
       });
     });
 
@@ -1273,8 +1310,23 @@ document.addEventListener('DOMContentLoaded', () => {
           scalar,
           length: 256,
           tex: null,
+          usage: 'storage',
         });
       }
+    }
+
+    // Step counter uniform if present in WGSL
+    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*stepCounter\s*:\s*u32\s*;/i.exec(wgsl);
+    if (stepMatch) {
+      const binding = parseInt(stepMatch[1], 10);
+      bindings.set(binding, {
+        binding,
+        scalar: 'u32',
+        length: 1,
+        tex: null,
+        usage: 'uniform',
+        isStepCounter: true,
+      });
     }
 
     bindings.forEach((info, binding) => {
@@ -1283,7 +1335,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!bufEntry || bufEntry.size !== byteLength) {
         const buffer = device.createBuffer({
           size: byteLength,
-          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+          usage: (info.usage === 'uniform' ? GPUBufferUsage.UNIFORM : GPUBufferUsage.STORAGE)
+            | GPUBufferUsage.COPY_SRC
+            | GPUBufferUsage.COPY_DST,
         });
         bufEntry = { buffer, size: byteLength };
         bindingBuffers.set(binding, bufEntry);
@@ -1301,6 +1355,9 @@ document.addEventListener('DOMContentLoaded', () => {
         readTasks.push({ dst: readBuffer, src: bufEntry.buffer, size: byteLength, tex: info.tex });
       }
       bindingMetas.set(binding, info);
+      if (info.isStepCounter) {
+        stepCounterBinding = binding;
+      }
     });
 
     return { entries, readTasks };
@@ -1365,6 +1422,7 @@ document.addEventListener('DOMContentLoaded', () => {
     lastCompiledWGSL = '';
     simulationSteps = 0;
     renderStepCounter();
+    updateStepCounterBuffer();
     bindingBuffers.forEach((entry) => {
       if (entry?.buffer) entry.buffer.destroy();
     });
