@@ -757,9 +757,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function buildTextureFromForm() {
     const formData = new FormData(textureForm);
     const size = {
-      x: clamp(parseInt(formData.get('sizeX'), 10) || 32, 1, 64),
-      y: clamp(parseInt(formData.get('sizeY'), 10) || 32, 1, 64),
-      z: clamp(parseInt(formData.get('sizeZ'), 10) || 1, 1, 16),
+      x: clamp(parseInt(formData.get('sizeX'), 10) || 32, 1, Number.MAX_SAFE_INTEGER),
+      y: clamp(parseInt(formData.get('sizeY'), 10) || 32, 1, Number.MAX_SAFE_INTEGER),
+      z: clamp(parseInt(formData.get('sizeZ'), 10) || 1, 1, Number.MAX_SAFE_INTEGER),
     };
     const rawName = (formData.get('name') || '').trim().replace(/\s+/g, '');
     const baseName = rawName || nextTextureDefaultName();
@@ -786,9 +786,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       tex.name = proposedName;
     }
     const newSize = {
-      x: clamp(parseInt(formData.get('sizeX'), 10) || tex.size.x, 1, 32),
-      y: clamp(parseInt(formData.get('sizeY'), 10) || tex.size.y, 1, 32),
-      z: clamp(parseInt(formData.get('sizeZ'), 10) || tex.size.z, 1, 16),
+      x: clamp(parseInt(formData.get('sizeX'), 10) || tex.size.x, 1, Number.MAX_SAFE_INTEGER),
+      y: clamp(parseInt(formData.get('sizeY'), 10) || tex.size.y, 1, Number.MAX_SAFE_INTEGER),
+      z: clamp(parseInt(formData.get('sizeZ'), 10) || tex.size.z, 1, Number.MAX_SAFE_INTEGER),
     };
     const sizeChanged = newSize.x !== tex.size.x || newSize.y !== tex.size.y || newSize.z !== tex.size.z;
     tex.size = newSize;
