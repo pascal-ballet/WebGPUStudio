@@ -1862,8 +1862,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.program = null;
       this.tex = null;
       this.size = [1, 1, 1];
+      this.rotX = -0.75;
+      this.rotY = 0.9;
+      this.isDragging = false;
+      this.lastPos = { x: 0, y: 0 };
       if (this.isValid) {
         this.initGL();
+        this.attachInteractions();
       }
     }
 
@@ -1878,11 +1883,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }`;
       const fs = `#version 300 es
       precision highp float;
+      precision highp sampler3D;
       in vec2 vUV;
       out vec4 outColor;
       uniform sampler3D uTex;
       uniform mat3 uRot;
-      vec3 camera = vec3(0.5, 0.5, -1.2);
+      uniform float uAlphaScale;
+      const vec3 center = vec3(0.5);
 
       // Simple ray-box intersection against [0,1]^3
       bool intersectBox(vec3 orig, vec3 dir, out float tmin, out float tmax) {
@@ -1899,6 +1906,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       void main() {
         vec2 uv = vUV * 2.0 - 1.0;
         vec3 dir = normalize(uRot * vec3(uv, 1.3));
+        vec3 camOffset = uRot * vec3(0.0, 0.0, -1.2);
+        vec3 camera = center + camOffset;
         float tmin; float tmax;
         if (!intersectBox(camera, dir, tmin, tmax)) {
           outColor = vec4(0.0);
@@ -1911,7 +1920,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (t > tmax || acc.a > 0.98) break;
           vec3 p = camera + dir * t;
           vec4 c = texture(uTex, p);
-          float a = c.a;
+          float a = c.a * uAlphaScale;
           acc.rgb += (1.0 - acc.a) * c.rgb * a;
           acc.a += (1.0 - acc.a) * a;
           t += 0.01;
@@ -1923,6 +1932,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.program = this.link(vsObj, fsObj);
       this.posLoc = 0;
       this.rotLoc = gl.getUniformLocation(this.program, 'uRot');
+      this.alphaLoc = gl.getUniformLocation(this.program, 'uAlphaScale');
       this.quadVbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -1933,6 +1943,31 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    }
+
+    attachInteractions() {
+      const onDown = (e) => {
+        this.isDragging = true;
+        this.lastPos = { x: e.clientX, y: e.clientY };
+      };
+      const onUp = () => {
+        this.isDragging = false;
+      };
+      const onMove = (e) => {
+        if (!this.isDragging) return;
+        const dx = e.clientX - this.lastPos.x;
+        const dy = e.clientY - this.lastPos.y;
+        this.lastPos = { x: e.clientX, y: e.clientY };
+        const sens = 0.01;
+        this.rotY += dx * sens;
+        this.rotX += dy * sens;
+        const maxPitch = 1.5;
+        this.rotX = Math.max(-maxPitch, Math.min(maxPitch, this.rotX));
+        this.render();
+      };
+      this.canvas.addEventListener('pointerdown', onDown);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointermove', onMove);
     }
 
     compile(type, src) {
@@ -2021,8 +2056,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       gl.vertexAttribPointer(this.posLoc, 2, gl.FLOAT, false, 0, 0);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_3D, this.tex);
-      const rotX = -0.75;
-      const rotY = 0.9;
+      const rotX = this.rotX;
+      const rotY = this.rotY;
       const cx = Math.cos(rotX); const sx = Math.sin(rotX);
       const cy = Math.cos(rotY); const sy = Math.sin(rotY);
       const rot = [
@@ -2031,6 +2066,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         cx * sy, -sx, cx * cy,
       ];
       gl.uniformMatrix3fv(this.rotLoc, false, rot);
+      gl.uniform1f(this.alphaLoc, 0.35);
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
