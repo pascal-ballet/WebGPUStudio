@@ -844,7 +844,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const val = Math.random();
       return Number(val.toFixed(3));
     }
-    return Math.floor(Math.random() * 256);
+    // Génère un entier 32 bits couvrant tout l’intervalle signé
+    const r = (Math.random() * 0x100000000) >>> 0; // 0 .. 2^32-1
+    return (r | 0); // converti en signé 32 bits
   }
 
   function clamp(value, min, max) {
