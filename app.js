@@ -408,6 +408,25 @@ fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 }
 
+// example WGSL : colors, transparency and stepCounter
+@compute @workgroup_size(4, 4, 4)
+fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
+    let index = gid.z * 256u * 256u + gid.y * 256u + gid.x;
+    if (gid.y <= 10) {
+        //texture1[index] = 0xFFFFFF;
+    } else {
+         if (gid.x <= 50) {
+            texture1[index] = 0x12AA0000 + i32(gid.y) + i32(stepCounter)  ;
+        }
+        if (gid.x > 50 && gid.x < 150 ) {
+            texture1[index] = 0x1200AA00 +( i32(gid.y)  );
+        }
+         if (gid.x > 150) {
+            texture1[index] = 0x00000099  + ( i32(gid.y) << 24 )  + ( i32(gid.y) << 16 ) + ( i32(gid.y) << 8 );
+        }
+    }
+}
+
 // example WGSL : Game Of Life
 @group(0) @binding(0) var<storage, read_write> texture1 : array<u32>;
 @group(0) @binding(1) var<storage, read_write> texture2 : array<u32>;
