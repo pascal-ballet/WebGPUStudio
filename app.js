@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
   const stepCounter = document.getElementById('stepCounter');
   const previewModeSelect = document.getElementById('previewModeSelect');
+  const previewValueLabel = document.getElementById('previewValueLabel');
 
   const compileBtn  = document.getElementById('compileBtn');
   const stepBtn     = document.getElementById('stepBtn');
@@ -86,6 +87,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let sharedPipelineLayout = null;
   let previewVisualMode = 'rgba';
   let voxelRenderer = null;
+  let previewValueCurrent = null;
+
+  function setPreviewValue(val) {
+    previewValueCurrent = val;
+    if (!previewValueLabel) return;
+    const text = val === null || val === undefined ? '—' : val;
+    previewValueLabel.textContent = `Valeurs : ${text}`;
+  }
 
   function renderStepCounter() {
     if (!stepCounter) return;
@@ -148,6 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     previewModeSelect.value = 'rgba';
   }
+
+  setPreviewValue(null);
 
 
 
@@ -1749,6 +1760,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!tex) {
       preview2D.innerHTML = '<p class="eyebrow">Aucune texture sélectionnée</p>';
       preview3D.innerHTML = '';
+      setPreviewValue(null);
       return;
     }
     if (previewMode === '2d') {
@@ -1777,11 +1789,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const layer = tex.values[sliceIndex] || [];
     preview2D.style.gridTemplateColumns = `repeat(${tex.size.x}, minmax(0, 1fr))`;
     preview2D.innerHTML = '';
-    layer.forEach((row) => {
-      row.forEach((val) => {
+    layer.forEach((row, j) => {
+      row.forEach((val, i) => {
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.textContent = tex.type === 'float' ? Number(val).toFixed(3) : Math.round(val);
+        cell.addEventListener('mouseenter', () => setPreviewValue(val));
+        cell.addEventListener('mouseleave', () => setPreviewValue(null));
         preview2D.appendChild(cell);
       });
     });
@@ -1828,6 +1842,19 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
     }
     ctx.putImageData(imageData, 0, 0);
+    const handleHover = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor(((e.clientX - rect.left) / rect.width) * tex.size.x);
+      const y = Math.floor(((e.clientY - rect.top) / rect.height) * tex.size.y);
+      if (x >= 0 && x < tex.size.x && y >= 0 && y < tex.size.y) {
+        const v = layer[y]?.[x];
+        setPreviewValue(v);
+      } else {
+        setPreviewValue(null);
+      }
+    };
+    canvas.addEventListener('pointermove', handleHover);
+    canvas.addEventListener('pointerleave', () => setPreviewValue(null));
     preview2D.appendChild(canvas);
   }
 
@@ -1842,11 +1869,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const grid = document.createElement('div');
       grid.className = 'slice-grid';
       grid.style.gridTemplateColumns = `repeat(${tex.size.x}, minmax(0, 1fr))`;
-      tex.values[k].forEach((row) => {
-        row.forEach((val) => {
+      tex.values[k].forEach((row, j) => {
+        row.forEach((val, i) => {
           const cell = document.createElement('div');
           cell.className = 'cell';
           cell.textContent = tex.type === 'float' ? Number(val).toFixed(3) : Math.round(val);
+          cell.addEventListener('mouseenter', () => setPreviewValue(val));
+          cell.addEventListener('mouseleave', () => setPreviewValue(null));
           grid.appendChild(cell);
         });
       });
@@ -1855,8 +1884,40 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
   }
 
+  function add3(a, b) {
+    return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  }
+  function sub3(a, b) {
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  }
+  function mul3(a, s) {
+    return [a[0] * s, a[1] * s, a[2] * s];
+  }
+  function mulMat3Vec3(m, v) {
+    return [
+      m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+      m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+      m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+    ];
+  }
+  function normalize3(v) {
+    const len = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / len, v[1] / len, v[2] / len];
+  }
+  function intersectBox(orig, dir, bmin, bmax) {
+    const inv = [1 / dir[0], 1 / dir[1], 1 / dir[2]];
+    const t0s = [(bmin[0] - orig[0]) * inv[0], (bmin[1] - orig[1]) * inv[1], (bmin[2] - orig[2]) * inv[2]];
+    const t1s = [(bmax[0] - orig[0]) * inv[0], (bmax[1] - orig[1]) * inv[1], (bmax[2] - orig[2]) * inv[2]];
+    const tsmaller = [Math.min(t0s[0], t1s[0]), Math.min(t0s[1], t1s[1]), Math.min(t0s[2], t1s[2])];
+    const tbigger = [Math.max(t0s[0], t1s[0]), Math.max(t0s[1], t1s[1]), Math.max(t0s[2], t1s[2])];
+    const tmin = Math.max(tsmaller[0], Math.max(tsmaller[1], tsmaller[2]));
+    const tmax = Math.min(tbigger[0], Math.min(tbigger[1], tbigger[2]));
+    if (tmax >= Math.max(tmin, 0)) return [tmin, tmax];
+    return null;
+  }
+
   class VoxelRenderer {
-    constructor(container) {
+    constructor(container, onHover) {
       this.container = container;
       this.canvas = document.createElement('canvas');
       this.canvas.className = 'voxel-canvas';
@@ -1865,10 +1926,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.program = null;
       this.tex = null;
       this.size = [1, 1, 1];
+    this.scale = [1,1,1];
       this.rotX = -0.75;
       this.rotY = 0.9;
       this.isDragging = false;
       this.lastPos = { x: 0, y: 0 };
+      this.onHover = onHover;
+      this.currentTex = null;
       if (this.isValid) {
         this.initGL();
         this.attachInteractions();
@@ -1974,9 +2038,69 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         this.rotX = Math.max(-maxPitch, Math.min(maxPitch, this.rotX));
         this.render();
       };
+      const onHover = (e) => {
+        if (!this.currentTex || !this.onHover) return;
+        const val = this.pickValue(e.clientX, e.clientY);
+        this.onHover(val);
+      };
+      const onLeave = () => {
+        if (this.onHover) this.onHover(null);
+      };
       this.canvas.addEventListener('pointerdown', onDown);
+      this.canvas.addEventListener('pointermove', onHover);
+      this.canvas.addEventListener('pointerleave', onLeave);
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointermove', onMove);
+    }
+
+    pickValue(clientX, clientY) {
+      if (!this.currentTex) return null;
+      const rect = this.canvas.getBoundingClientRect();
+      const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = 1 - ((clientY - rect.top) / rect.height) * 2;
+      const rotX = this.rotX;
+      const rotY = this.rotY;
+      const cx = Math.cos(rotX); const sx = Math.sin(rotX);
+      const cy = Math.cos(rotY); const sy = Math.sin(rotY);
+      const rot = [
+        cy, 0, -sy,
+        sx * sy, cx, sx * cy,
+        cx * sy, -sx, cx * cy,
+      ];
+      const dir = normalize3(mulMat3Vec3(rot, [nx, ny, 1.3]));
+      const camOffset = mulMat3Vec3(rot, [0, 0, -1.2]);
+      const center = [0.5, 0.5, 0.5];
+      const camera = add3(center, camOffset);
+      const halfS = [this.scale[0] * 0.5, this.scale[1] * 0.5, this.scale[2] * 0.5];
+      const bmin = sub3(center, halfS);
+      const bmax = add3(center, halfS);
+      const hit = intersectBox(camera, dir, bmin, bmax);
+      if (!hit) return null;
+      let [tmin, tmax] = hit;
+      let t = Math.max(0, tmin);
+      const alphaScale = 0.35;
+      const tex = this.currentTex;
+      for (let i = 0; i < 192; i += 1) {
+        if (t > tmax) break;
+        const p = add3(camera, mul3(dir, t));
+        const uvw = [
+          (p[0] - bmin[0]) / this.scale[0],
+          (p[1] - bmin[1]) / this.scale[1],
+          (p[2] - bmin[2]) / this.scale[2],
+        ];
+        if (uvw[0] >= 0 && uvw[0] < 1 && uvw[1] >= 0 && uvw[1] < 1 && uvw[2] >= 0 && uvw[2] < 1) {
+          const ix = Math.floor(uvw[0] * tex.size.x);
+          const iy = Math.floor(uvw[1] * tex.size.y);
+          const iz = Math.floor(uvw[2] * tex.size.z);
+          const val = tex.values[iz]?.[iy]?.[ix];
+          const [ , , , a ] = valueToRGBA(val, tex.type === 'float');
+          if (((a || 0) / 255) * alphaScale > 0.05) {
+            return val;
+          }
+        }
+        t += 0.01;
+      }
+      return null;
     }
 
     compile(type, src) {
@@ -2007,6 +2131,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (!this.isValid) return;
       const gl = this.gl;
       this.size = [tex.size.x, tex.size.y, tex.size.z];
+      this.currentTex = tex;
       const maxDim = Math.max(tex.size.x, tex.size.y, tex.size.z, 1);
       this.scale = [
         tex.size.x / maxDim,
@@ -2096,13 +2221,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function render3DImage(tex) {
     preview3D.innerHTML = '';
     if (!voxelRenderer) {
-      voxelRenderer = new VoxelRenderer(preview3D);
+      voxelRenderer = new VoxelRenderer(preview3D, setPreviewValue);
     }
     if (!voxelRenderer.isValid) {
       preview3D.innerHTML = '<p class="eyebrow">WebGL2 requis pour l’aperçu 3D RGBA.</p>';
       return;
     }
     voxelRenderer.updateTexture(tex);
+    setPreviewValue(null);
     voxelRenderer.render();
   }
 
