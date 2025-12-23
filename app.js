@@ -627,7 +627,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   // Functions events
   addFunctionBtn.addEventListener('click', () => {
-    const fn = buildDefaultFunction();
+    const fn = buildDefaultLibrary();
     functionsStore.push(fn);
     selectedFunctionId = fn.id;
     renderFunctionViews();
@@ -1067,24 +1067,25 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderPipelineViews();
   }
 
-  function buildDefaultFunction() {
+  function buildDefaultLibrary() {
     const idx = functionsStore.length + 1;
     return {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `fn-${Date.now()}`,
-      name: `Fonction ${idx}`,
+      name: `Bibliothèque ${idx}`,
       code: defaultFunctionCode(),
     };
   }
 
   function defaultFunctionCode() {
     return [
+      '/* Exemple de fonctions ',
       'fn clamp01(value : f32) -> f32 {',
       '    return max(0.0, min(1.0, value));',
       '}',
       '',
       'fn lerp(a : f32, b : f32, t : f32) -> f32 {',
       '    return a + (b - a) * clamp01(t);',
-      '}',
+      '} */',
     ].join('\n');
   }
 
@@ -1093,7 +1094,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!functionsStore.length) {
       const empty = document.createElement('div');
       empty.className = 'list-item';
-      empty.textContent = 'Aucune fonction. Ajoutez-en une.';
+      empty.textContent = 'Aucune bibliothèque. Ajoutez-en une.';
       functionList.appendChild(empty);
       removeFunctionBtn.disabled = true;
       duplicateFunctionBtn.disabled = true;
@@ -1656,7 +1657,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function seedInitialFunction() {
-    const fn = buildDefaultFunction();
+    const fn = buildDefaultLibrary();
     functionsStore.push(fn);
     selectedFunctionId = fn.id;
     renderFunctionViews();
