@@ -47,6 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const runBtn      = document.getElementById('runBtn');
   const pauseBtn    = document.getElementById('pauseBtn');
   const stopBtn     = document.getElementById('stopBtn');
+  const loadBtn     = document.getElementById('loadBtn');
+  const saveBtn     = document.getElementById('saveBtn');
+  const loadFileInput = document.getElementById('loadFileInput');
 
   // Vérifications simples pour s'assurer que les boutons sont bien trouvés
   if (!compileBtn) console.warn('compileBtn introuvable dans le DOM'); else console.log('compileBtn détecté');
@@ -259,6 +262,45 @@ document.addEventListener('DOMContentLoaded', () => {
     resetGPUState();
     logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
   });
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const data = serializeProject();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.download = `project-${stamp}.wgstudio`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      logConsole('Projet sauvegardé.', 'save');
+    });
+  }
+
+  if (loadBtn && loadFileInput) {
+    loadBtn.addEventListener('click', () => {
+      loadFileInput.value = '';
+      loadFileInput.click();
+    });
+    loadFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          loadProject(data);
+          logConsole(`Projet chargé : ${file.name}`, 'load');
+        } catch (err) {
+          logConsole(`Échec chargement : ${err.message || err}`, 'load');
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
 
 
 
@@ -1605,6 +1647,47 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
     currentDevice = null;
     markBindingsDirty();
+  }
+
+  function serializeProject() {
+    return {
+      version: 1,
+      textures,
+      shaders,
+      functions: functionsStore,
+      pipeline,
+      pipelineShaderChoiceId,
+    };
+  }
+
+  function loadProject(data) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Fichier invalide');
+    }
+    textures = Array.isArray(data.textures) ? data.textures : [];
+    shaders = Array.isArray(data.shaders) ? data.shaders : [];
+    functionsStore = Array.isArray(data.functions) ? data.functions : [];
+    pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
+    pipelineShaderChoiceId = data.pipelineShaderChoiceId || shaders[0]?.id || null;
+    selectedTextureId = textures[0]?.id || null;
+    selectedShaderId = shaders[0]?.id || null;
+    selectedFunctionId = functionsStore[0]?.id || null;
+    selectedPipeId = pipeline[0]?.id || null;
+    markBindingsDirty();
+    renderTextureList();
+    const tex = textures.find((t) => t.id === selectedTextureId);
+    if (tex) {
+      renderForm(tex);
+      renderPreview();
+    } else {
+      renderForm({ size: { x: 1, y: 1, z: 1 }, type: 'int', fill: 'empty', name: '' });
+    }
+    renderShaderList();
+    const currentShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0];
+    renderShaderForm(currentShader || null);
+    renderShaderEditor(currentShader || null);
+    renderFunctionViews();
+    renderPipelineViews();
   }
 
   function logConsole(message, meta = '') {
