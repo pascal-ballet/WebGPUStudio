@@ -40,8 +40,7 @@
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Textures</p>
-            <h2 class="panel-title">Gestion</h2>
+            <h2 class="panel-title">Textures</h2>
           </div>
           <button class="ghost" id="addTextureBtn">+ Ajouter</button>
         </div>
@@ -51,8 +50,7 @@
       <div class="panel panel-preview">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Visualisation</p>
-            <h2 class="panel-title">2D / 3D</h2>
+            <h2 class="panel-title">Visualisation 2D/3D</h2>
           </div>
           <div class="toggle-group">
             <button class="toggle active" data-mode="2d">2D</button>
@@ -67,7 +65,9 @@
               <option value="rgba">Image RGBA</option>
             </select>
           </label>
-          <span class="pill subtle" id="previewValueLabel">Valeurs : —</span>
+          <label>Valeur
+            <span class="pill subtle" id="previewValueLabel">Valeurs : —</span>
+          </label>
         </div>
         <div class="preview-area">
           <div id="preview2D" class="preview-grid"></div>
@@ -127,8 +127,7 @@
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Compute shaders</p>
-            <h2 class="panel-title">Gestion</h2>
+            <h2 class="panel-title">Compute Shaders</h2>
           </div>
           <button class="ghost" id="addShaderBtn">+ Ajouter</button>
         </div>
@@ -138,7 +137,7 @@
       <div class="panel panel-preview">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Code</p>
+            <p class="eyebrow">Web GPU Shader Language</p>
             <h2 class="panel-title">WGSL</h2>
           </div>
           <span class="pill subtle" id="shaderLines">0 lignes</span>
@@ -150,7 +149,7 @@
         <div class="panel-header">
           <div>
             <p class="eyebrow">Propriétés</p>
-            <h2 class="panel-title">Compute shader</h2>
+            <h2 class="panel-title">Compute Shaders</h2>
           </div>
           <button class="ghost danger" id="removeShaderBtn">Supprimer</button>
         </div>
@@ -172,10 +171,9 @@
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Pipelines</p>
-            <h2 class="panel-title">Étapes</h2>
+            <h2 class="panel-title">Compute Shaders</h2>
           </div>
-          <button class="ghost" id="addPipelineBtn">+ Ajouter</button>
+          <button class="ghost" id="addPipelineBtn">+ Pipeline >>></button>
         </div>
         <div class="list" id="pipelineList"></div>
       </div>
@@ -184,10 +182,10 @@
         <div class="panel-header">
           <div>
             <p class="eyebrow">Ordre d'exécution</p>
-            <h2 class="panel-title">Timeline</h2>
+            <h2 class="panel-title">Pipelines</h2>
           </div>
           <div class="header-actions">
-            <button class="ghost small" id="moveUpBtn">← Avant</button>
+            <button class="ghost small" id="moveUpBtn">Avant ←</button>
             <button class="ghost small" id="moveDownBtn">→ Après</button>
           </div>
         </div>
@@ -198,7 +196,7 @@
         <div class="panel-header">
           <div>
             <p class="eyebrow">Propriétés</p>
-            <h2 class="panel-title">Étape sélectionnée</h2>
+            <h2 class="panel-title">Pipeline sélectionnée</h2>
           </div>
           <button class="ghost danger" id="removePipelineBtn">Supprimer</button>
         </div>
@@ -208,7 +206,7 @@
             <input type="text" name="pipeName" required />
           </label>
 
-          <label>Compute shader associé
+          <label>Compute Shader associé
             <select name="shaderRef" id="pipelineShaderSelect"></select>
           </label>
 

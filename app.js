@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderStepCounter() {
     if (!stepCounter) return;
-    stepCounter.textContent = `Étapes simulées : ${simulationSteps}`;
+    stepCounter.textContent = `Pass simulées : ${simulationSteps}`;
   }
   renderStepCounter();
 
@@ -508,12 +508,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       .map((pipe, idx) => {
         const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
         if (!pipeEntry) {
-          logConsole(`Étape ${idx + 1}: pipeline introuvable.`, 'run');
+          logConsole(`Pipeline ${idx + 1}: pipeline introuvable.`, 'run');
           return null;
         }
         const layout = pipeEntry.pipeline.getBindGroupLayout(0);
         if (!layout) {
-          logConsole(`Étape ${idx + 1}: layout introuvable pour le pipeline.`, 'run');
+          logConsole(`Pipeline ${idx + 1}: layout introuvable pour le pipeline.`, 'run');
           return null;
         }
         const bindGroup = currentDevice.createBindGroup({ layout, entries });
@@ -944,7 +944,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const shaderId = shaderIdParam || shaders[0]?.id || null;
     return {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `pipe-${Date.now()}`,
-      name: `Étape ${idx}`,
+      name: `Pipeline ${idx}`,
       shaderId,
       dispatch: { x: 4, y: 4, z: 1 },
     };
@@ -978,7 +978,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function renderPipelineTimeline() {
   pipelineTimeline.innerHTML = '';
   if (!pipeline.length) {
-    pipelineTimeline.innerHTML = '<p class="eyebrow">Aucune étape dans le pipeline.</p>';
+    pipelineTimeline.innerHTML = '<p class="eyebrow">Aucun Pipeline dans la Pass.</p>';
     return;
   }
   pipeline.forEach((pipe, index) => {
@@ -1393,7 +1393,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     pipeline.forEach((pipeStep, idx) => {
       const shader = shaders.find((s) => s.id === pipeStep.shaderId);
       if (!shader) {
-        logConsole(`Étape ${idx + 1}: shader manquant.`, 'pipeline');
+        logConsole(`Pipeline ${idx + 1}: shader manquant.`, 'pipeline');
         isCompiled = false; updateButtons();
         return;
       }
@@ -1404,7 +1404,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           compute: { module, entryPoint },
         });
         computePipelines.push({ pipeId: pipeStep.id, pipeline: computePipe });
-        logConsole(`Pipeline étape ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
+        logConsole(`Pipeline ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
         isCompiled = true; updateButtons();
       } catch (err) {
         logConsole(`Échec création pipeline pour ${shader.name}: ${err.message || err}`, 'pipeline');
