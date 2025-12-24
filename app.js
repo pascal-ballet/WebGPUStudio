@@ -1132,7 +1132,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const meta = document.createElement('div');
       meta.className = 'meta';
       if (pipe.type === 'loopStart') {
-        meta.textContent = `Début boucle · Répétitions : ${pipe.repeat ?? 1}`;
+        meta.textContent = `Répétitions : ${pipe.repeat ?? 1}`;
       } else if (pipe.type === 'loopEnd') {
         meta.textContent = 'Fin boucle';
       } else {
