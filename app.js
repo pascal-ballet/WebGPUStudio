@@ -29,6 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const addLoopEndBtn = document.getElementById('addLoopEndBtn');
   const pipelineForm = document.getElementById('pipelineForm');
   const pipelineShaderSelect = document.getElementById('pipelineShaderSelect');
+  const pipelineFieldShader = pipelineForm.querySelector('.field-shader');
+  const pipelineFieldDispatch = pipelineForm.querySelector('.field-dispatch');
+  const pipelineFieldRepeat = pipelineForm.querySelector('.field-repeat');
   const functionList = document.getElementById('functionList');
   const addFunctionBtn = document.getElementById('addFunctionBtn');
   const removeFunctionBtn = document.getElementById('removeFunctionBtn');
@@ -707,7 +710,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const formData = new FormData(pipelineForm);
     pipe.name = (formData.get('pipeName') || pipe.name).trim() || pipe.name;
     if (pipe.type === 'loopStart') {
-      pipe.repeat = Math.max(1, parseInt(formData.get('pDispatchX'), 10) || pipe.repeat || 1);
+      const repeatInput = pipelineFieldRepeat
+        ? pipelineFieldRepeat.querySelector('input[name="loopRepeat"]')
+        : null;
+      const rep = repeatInput
+        ? parseInt(repeatInput.value, 10)
+        : parseInt(formData.get('pDispatchX'), 10);
+      pipe.repeat = Math.max(1, rep || pipe.repeat || 1);
     } else if (pipe.type === 'step') {
       pipe.shaderId = formData.get('shaderRef') || pipe.shaderId;
       pipe.dispatch = {
@@ -1059,6 +1068,25 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return allowOpen ? true : stack.length === 0;
   }
 
+  function expandPipeline(list) {
+    if (!Array.isArray(list)) return [];
+    const stack = [{ items: [] }];
+    list.forEach((item) => {
+      if (item.type === 'loopStart') {
+        stack.push({ repeat: Math.max(1, parseInt(item.repeat, 10) || 1), items: [] });
+      } else if (item.type === 'loopEnd') {
+        if (stack.length <= 1) return;
+        const { repeat, items } = stack.pop();
+        for (let i = 0; i < repeat; i += 1) {
+          stack[stack.length - 1].items.push(...items);
+        }
+      } else {
+        stack[stack.length - 1].items.push(item);
+      }
+    });
+    return stack.length === 1 ? stack[0].items : [];
+  }
+
   function renderPipelineShaderList() {
     pipelineList.innerHTML = '';
     addPipelineBtn.disabled = !shaders.length;
@@ -1133,6 +1161,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const isLoopStart = pipe.type === 'loopStart';
     const isLoopEnd = pipe.type === 'loopEnd';
     inputs.forEach((el) => { el.disabled = isLoopEnd; });
+    if (pipelineFieldShader) pipelineFieldShader.classList.toggle('hidden', isLoopStart || isLoopEnd);
+    if (pipelineFieldDispatch) pipelineFieldDispatch.classList.toggle('hidden', isLoopStart || isLoopEnd);
+    if (pipelineFieldRepeat) pipelineFieldRepeat.classList.toggle('hidden', !isLoopStart);
     pipelineForm.pipeName.value = pipe.name;
     pipelineShaderSelect.innerHTML = '';
     if (isLoopStart) {
@@ -1144,6 +1175,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       pipelineForm.pDispatchX.value = pipe.repeat || 1;
       pipelineForm.pDispatchY.value = '';
       pipelineForm.pDispatchZ.value = '';
+      if (pipelineFieldRepeat) {
+        const repeatInput = pipelineFieldRepeat.querySelector('input[name="loopRepeat"]');
+        if (repeatInput) repeatInput.value = pipe.repeat || 1;
+      }
     } else if (isLoopEnd) {
       const opt = document.createElement('option');
       opt.value = '';

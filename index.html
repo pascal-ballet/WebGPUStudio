@@ -214,19 +214,23 @@
             <input type="text" name="pipeName" required />
           </label>
 
-          <label>Compute Shader associé
+          <label class="field-shader">Compute Shader associé
             <select name="shaderRef" id="pipelineShaderSelect"></select>
           </label>
 
+          <label class="field-repeat hidden">Répétitions
+            <input type="number" name="loopRepeat" min="1" value="2" />
+          </label>
+
           <label>dispatch Workgroups</label>
-          <div class="grid-3">
-            <label>x
+          <div class="grid-3 field-dispatch">
+            <label class="label-dispatch-x">x
               <input type="number" name="pDispatchX" min="1" max="65535" value="4" required />
             </label>
-            <label>y
+            <label class="label-dispatch-y">y
               <input type="number" name="pDispatchY" min="1" max="65535" value="4" required />
             </label>
-            <label>z
+            <label class="label-dispatch-z">z
               <input type="number" name="pDispatchZ" min="1" max="65535" value="1" required />
             </label>
           </div>
