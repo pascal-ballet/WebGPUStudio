@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const removePipelineBtn = document.getElementById('removePipelineBtn');
   const moveUpBtn = document.getElementById('moveUpBtn');
   const moveDownBtn = document.getElementById('moveDownBtn');
+  const addLoopStartBtn = document.getElementById('addLoopStartBtn');
+  const addLoopEndBtn = document.getElementById('addLoopEndBtn');
   const pipelineForm = document.getElementById('pipelineForm');
   const pipelineShaderSelect = document.getElementById('pipelineShaderSelect');
   const functionList = document.getElementById('functionList');
@@ -546,7 +548,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
       return null;
     }
-    const dispatchList = pipeline
+    if (!validateLoopStructure(pipeline)) {
+      logConsole('Structure de boucle invalide : vérifiez vos Début/Fin.', 'run');
+      return null;
+    }
+    const dispatchList = expandPipeline(pipeline)
       .map((pipe, idx) => {
         const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
         if (!pipeEntry) {
@@ -642,6 +648,48 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderPipelineViews();
   });
 
+  if (addLoopStartBtn) {
+    addLoopStartBtn.addEventListener('click', () => {
+      const pos = pipeline.findIndex((p) => p.id === selectedPipeId);
+      const insertAt = pos >= 0 ? pos : pipeline.length;
+      const loopStart = {
+        id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `loop-start-${Date.now()}`,
+        type: 'loopStart',
+        name: 'Début boucle',
+        repeat: 2,
+      };
+      pipeline.splice(insertAt, 0, loopStart);
+      if (!validateLoopStructure(pipeline, true)) {
+        pipeline.splice(insertAt, 1);
+        logConsole('Boucle invalide (Début sans Fin).', 'pipeline');
+        return;
+      }
+      selectedPipeId = loopStart.id;
+      renderPipelineViews();
+    });
+  }
+
+  if (addLoopEndBtn) {
+    addLoopEndBtn.addEventListener('click', () => {
+      if (!pipeline.length) return;
+      const pos = pipeline.findIndex((p) => p.id === selectedPipeId);
+      const insertAt = pos >= 0 ? pos + 1 : pipeline.length;
+      const loopEnd = {
+        id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `loop-end-${Date.now()}`,
+        type: 'loopEnd',
+        name: 'Fin boucle',
+      };
+      pipeline.splice(insertAt, 0, loopEnd);
+      if (!validateLoopStructure(pipeline, true)) {
+        pipeline.splice(insertAt, 1);
+        logConsole('Boucle invalide (Fin sans Début ou intercalée).', 'pipeline');
+        return;
+      }
+      selectedPipeId = loopEnd.id;
+      renderPipelineViews();
+    });
+  }
+
   removePipelineBtn.addEventListener('click', () => {
     if (!selectedPipeId) return;
     pipeline = pipeline.filter((s) => s.id !== selectedPipeId);
@@ -658,12 +706,16 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!pipe) return;
     const formData = new FormData(pipelineForm);
     pipe.name = (formData.get('pipeName') || pipe.name).trim() || pipe.name;
-    pipe.shaderId = formData.get('shaderRef') || pipe.shaderId;
-    pipe.dispatch = {
-      x: clamp(parseInt(formData.get('pDispatchX'), 10) || pipe.dispatch?.x || 1, 1, 65535),
-      y: clamp(parseInt(formData.get('pDispatchY'), 10) || pipe.dispatch?.y || 1, 1, 65535),
-      z: clamp(parseInt(formData.get('pDispatchZ'), 10) || pipe.dispatch?.z || 1, 1, 65535),
-    };
+    if (pipe.type === 'loopStart') {
+      pipe.repeat = Math.max(1, parseInt(formData.get('pDispatchX'), 10) || pipe.repeat || 1);
+    } else if (pipe.type === 'step') {
+      pipe.shaderId = formData.get('shaderRef') || pipe.shaderId;
+      pipe.dispatch = {
+        x: clamp(parseInt(formData.get('pDispatchX'), 10) || pipe.dispatch?.x || 1, 1, 65535),
+        y: clamp(parseInt(formData.get('pDispatchY'), 10) || pipe.dispatch?.y || 1, 1, 65535),
+        z: clamp(parseInt(formData.get('pDispatchZ'), 10) || pipe.dispatch?.z || 1, 1, 65535),
+      };
+    }
     renderPipelineViews();
   });
 
@@ -985,11 +1037,26 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const idx = pipeline.length + 1;
     const shaderId = shaderIdParam || shaders[0]?.id || null;
     return {
+      type: 'step',
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `pipe-${Date.now()}`,
       name: `Pipeline ${idx}`,
       shaderId,
       dispatch: { x: 4, y: 4, z: 1 },
     };
+  }
+
+  function validateLoopStructure(list, allowOpen = false) {
+    const stack = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list[i];
+      if (item.type === 'loopStart') {
+        stack.push(item);
+      } else if (item.type === 'loopEnd') {
+        if (!stack.length) return false;
+        stack.pop();
+      }
+    }
+    return allowOpen ? true : stack.length === 0;
   }
 
   function renderPipelineShaderList() {
@@ -1018,15 +1085,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function renderPipelineTimeline() {
-  pipelineTimeline.innerHTML = '';
-  if (!pipeline.length) {
-    pipelineTimeline.innerHTML = '<p class="eyebrow">Aucun Pipeline dans la Pass.</p>';
-    return;
-  }
-  pipeline.forEach((pipe, index) => {
+    pipelineTimeline.innerHTML = '';
+    if (!pipeline.length) {
+      pipelineTimeline.innerHTML = '<p class="eyebrow">Aucun Pipeline dans la Pass.</p>';
+      return;
+    }
+    pipeline.forEach((pipe, index) => {
       const block = document.createElement('div');
       block.className = 'timeline-pipe';
-        block.draggable = true;
+      block.draggable = true;
       if (pipe.id === selectedPipeId) block.classList.add('active');
       const badge = document.createElement('div');
       badge.className = 'badge';
@@ -1036,7 +1103,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       title.textContent = pipe.name;
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = `${pipelineShaderLabel(pipe.shaderId)} · Dispatch ${pipe.dispatch?.x ?? 1}×${pipe.dispatch?.y ?? 1}×${pipe.dispatch?.z ?? 1}`;
+      if (pipe.type === 'loopStart') {
+        meta.textContent = `Début boucle · Répétitions : ${pipe.repeat ?? 1}`;
+      } else if (pipe.type === 'loopEnd') {
+        meta.textContent = 'Fin boucle';
+      } else {
+        meta.textContent = `${pipelineShaderLabel(pipe.shaderId)} · Dispatch ${pipe.dispatch?.x ?? 1}×${pipe.dispatch?.y ?? 1}×${pipe.dispatch?.z ?? 1}`;
+      }
       content.appendChild(title);
       content.appendChild(meta);
       block.appendChild(badge);
@@ -1057,28 +1130,50 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       pipelineShaderSelect.innerHTML = '';
       return;
     }
-    inputs.forEach((el) => { el.disabled = false; });
+    const isLoopStart = pipe.type === 'loopStart';
+    const isLoopEnd = pipe.type === 'loopEnd';
+    inputs.forEach((el) => { el.disabled = isLoopEnd; });
     pipelineForm.pipeName.value = pipe.name;
     pipelineShaderSelect.innerHTML = '';
-    if (!shaders.length) {
+    if (isLoopStart) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = 'Aucun compute shader disponible';
+      opt.textContent = 'Boucle (début)';
       pipelineShaderSelect.appendChild(opt);
       pipelineShaderSelect.disabled = true;
+      pipelineForm.pDispatchX.value = pipe.repeat || 1;
+      pipelineForm.pDispatchY.value = '';
+      pipelineForm.pDispatchZ.value = '';
+    } else if (isLoopEnd) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Boucle (fin)';
+      pipelineShaderSelect.appendChild(opt);
+      pipelineShaderSelect.disabled = true;
+      pipelineForm.pDispatchX.value = '';
+      pipelineForm.pDispatchY.value = '';
+      pipelineForm.pDispatchZ.value = '';
     } else {
-      pipelineShaderSelect.disabled = false;
-      shaders.forEach((shader) => {
+      if (!shaders.length) {
         const opt = document.createElement('option');
-        opt.value = shader.id;
-        opt.textContent = shader.name;
+        opt.value = '';
+        opt.textContent = 'Aucun compute shader disponible';
         pipelineShaderSelect.appendChild(opt);
-      });
-      pipelineShaderSelect.value = pipe.shaderId || shaders[0].id;
+        pipelineShaderSelect.disabled = true;
+      } else {
+        pipelineShaderSelect.disabled = false;
+        shaders.forEach((shader) => {
+          const opt = document.createElement('option');
+          opt.value = shader.id;
+          opt.textContent = shader.name;
+          pipelineShaderSelect.appendChild(opt);
+        });
+        pipelineShaderSelect.value = pipe.shaderId || shaders[0].id;
+      }
+      pipelineForm.pDispatchX.value = pipe.dispatch?.x ?? 4;
+      pipelineForm.pDispatchY.value = pipe.dispatch?.y ?? 4;
+      pipelineForm.pDispatchZ.value = pipe.dispatch?.z ?? 1;
     }
-    pipelineForm.pDispatchX.value = pipe.dispatch?.x ?? 4;
-    pipelineForm.pDispatchY.value = pipe.dispatch?.y ?? 4;
-    pipelineForm.pDispatchZ.value = pipe.dispatch?.z ?? 1;
   }
 
   function renderPipelineViews() {
@@ -1103,8 +1198,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (idx === -1) return;
     const newIndex = idx + delta;
     if (newIndex < 0 || newIndex >= pipeline.length) return;
-    const [pipe] = pipeline.splice(idx, 1);
-    pipeline.splice(newIndex, 0, pipe);
+    const clone = [...pipeline];
+    const [pipe] = clone.splice(idx, 1);
+    clone.splice(newIndex, 0, pipe);
+    if (!validateLoopStructure(clone, true)) return;
+    pipeline = clone;
     selectedPipeId = pipe.id;
     renderPipelineViews();
   }
@@ -1422,6 +1520,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       isCompiled = false; updateButtons();
       return;
     }
+    if (!validateLoopStructure(pipeline)) {
+      logConsole('Structure de boucle invalide : vérifiez vos Début/Fin.', 'pipeline');
+      isCompiled = false; updateButtons();
+      return;
+    }
     // Construire un layout commun pour tous les pipelines à partir des bindings WGSL détectés
     sharedPipelineLayout = null;
     try {
@@ -1433,7 +1536,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     } catch (err) {
       logConsole(`Impossible de créer le layout commun: ${err.message || err}`, 'pipeline');
     }
-    pipeline.forEach((pipeStep, idx) => {
+    const flatSteps = expandPipeline(pipeline).filter((p) => (p.type || 'step') === 'step');
+    flatSteps.forEach((pipeStep, idx) => {
       const shader = shaders.find((s) => s.id === pipeStep.shaderId);
       if (!shader) {
         logConsole(`Pipeline ${idx + 1}: shader manquant.`, 'pipeline');
