@@ -29,6 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const addLoopEndBtn = document.getElementById('addLoopEndBtn');
   const pipelineForm = document.getElementById('pipelineForm');
   const pipelineShaderSelect = document.getElementById('pipelineShaderSelect');
+  const pipelinePanelTitle = document.getElementById('pipelinePanelTitle');
+  const stepFields = document.getElementById('stepFields');
+  const loopStartFields = document.getElementById('loopStartFields');
+  const loopEndFields = document.getElementById('loopEndFields');
   const pipelineFieldShader = pipelineForm.querySelector('.field-shader');
   const pipelineFieldDispatch = pipelineForm.querySelector('.field-dispatch');
   const pipelineFieldRepeat = pipelineForm.querySelector('.field-repeat');
@@ -707,11 +711,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     e.preventDefault();
     const pipe = pipeline.find((s) => s.id === selectedPipeId);
     if (!pipe) return;
+    if (pipe.type === 'loopEnd') return;
     const formData = new FormData(pipelineForm);
     pipe.name = (formData.get('pipeName') || pipe.name).trim() || pipe.name;
     if (pipe.type === 'loopStart') {
-      const repeatInput = pipelineFieldRepeat
-        ? pipelineFieldRepeat.querySelector('input[name="loopRepeat"]')
+      const repeatInput = loopStartFields
+        ? loopStartFields.querySelector('input[name="loopRepeat"]')
         : null;
       const rep = repeatInput
         ? parseInt(repeatInput.value, 10)
@@ -724,9 +729,16 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         y: clamp(parseInt(formData.get('pDispatchY'), 10) || pipe.dispatch?.y || 1, 1, 65535),
         z: clamp(parseInt(formData.get('pDispatchZ'), 10) || pipe.dispatch?.z || 1, 1, 65535),
       };
+    } else if (pipelinePanelTitle) {
+      pipelinePanelTitle.textContent = pipe.type === 'loopEnd'
+        ? 'Fin boucle sélectionné'
+        : 'Pipeline sélectionnée';
     }
     renderPipelineViews();
   });
+
+  // Masquer le bouton Appliquer pour les fins de boucle (géré dans renderPipelineForm)
+  const pipelineSubmitBtn = pipelineForm.querySelector('button[type="submit"]');
 
   // Functions events
   addFunctionBtn.addEventListener('click', () => {
@@ -1161,9 +1173,29 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const isLoopStart = pipe.type === 'loopStart';
     const isLoopEnd = pipe.type === 'loopEnd';
     inputs.forEach((el) => { el.disabled = isLoopEnd; });
+    if (stepFields) stepFields.classList.toggle('hidden', isLoopStart || isLoopEnd);
     if (pipelineFieldShader) pipelineFieldShader.classList.toggle('hidden', isLoopStart || isLoopEnd);
-    if (pipelineFieldDispatch) pipelineFieldDispatch.classList.toggle('hidden', isLoopStart || isLoopEnd);
-    if (pipelineFieldRepeat) pipelineFieldRepeat.classList.toggle('hidden', !isLoopStart);
+    if (loopStartFields) loopStartFields.classList.toggle('hidden', !isLoopStart);
+    if (loopEndFields) loopEndFields.classList.toggle('hidden', !isLoopEnd);
+    // Handle name field visibility/readonly for loops
+    const nameLabel = pipelineForm.querySelector('label:nth-of-type(1)');
+    const nameInput = pipelineForm.querySelector('input[name="pipeName"]');
+    if (nameLabel) nameLabel.classList.toggle('hidden', isLoopStart || isLoopEnd);
+    if (nameInput) {
+      nameInput.readOnly = isLoopStart || isLoopEnd;
+    }
+    if (pipelinePanelTitle) {
+      if (isLoopStart) {
+        pipelinePanelTitle.textContent = 'Début boucle sélectionné';
+      } else if (isLoopEnd) {
+        pipelinePanelTitle.textContent = 'Fin boucle sélectionné';
+      } else {
+        pipelinePanelTitle.textContent = 'Pipeline sélectionnée';
+      }
+    }
+    if (pipelineSubmitBtn) {
+      pipelineSubmitBtn.classList.toggle('hidden', isLoopEnd);
+    }
     pipelineForm.pipeName.value = pipe.name;
     pipelineShaderSelect.innerHTML = '';
     if (isLoopStart) {
