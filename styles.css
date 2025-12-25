@@ -84,7 +84,7 @@ body {
 
 .step-counter {
   margin-left: auto;
-  align-self: left;
+  align-self: center;
   white-space: nowrap;
 }
 

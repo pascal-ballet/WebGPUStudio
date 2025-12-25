@@ -101,11 +101,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let voxelRenderer = null;
   let previewValueCurrent = null;
 
-  function setPreviewValue(val) {
+  function setPreviewValue(x,y,val) {
     previewValueCurrent = val;
     if (!previewValueLabel) return;
     const text = val === null || val === undefined ? '—' : val;
-    previewValueLabel.textContent = `Valeurs : ${text}`;
+    previewValueLabel.textContent = `(${x},${y}) : ${text}`;
   }
 
   function renderStepCounter() {
@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
     previewModeSelect.value = 'rgba';
   }
 
-  setPreviewValue(null);
+  setPreviewValue(0,0,null);
 
 
 
@@ -2060,7 +2060,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!tex) {
       preview2D.innerHTML = '<p class="eyebrow">Aucune texture sélectionnée</p>';
       preview3D.innerHTML = '';
-      setPreviewValue(null);
+      setPreviewValue(0,0,null);
       return;
     }
     if (previewMode === '2d') {
@@ -2072,7 +2072,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         render2D(tex);
       }
     } else {
-      setPreviewValue(null);
+      setPreviewValue(0,0,null);
       preview2D.classList.add('hidden');
       preview3D.classList.remove('hidden');
       if (previewVisualMode === 'rgba') {
@@ -2095,8 +2095,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.textContent = tex.type === 'float' ? Number(val).toFixed(3) : Math.round(val);
-        cell.addEventListener('mouseenter', () => setPreviewValue(val));
-        cell.addEventListener('mouseleave', () => setPreviewValue(null));
+        cell.addEventListener('mouseenter', () => setPreviewValue(i,j,val));
+        cell.addEventListener('mouseleave', () => setPreviewValue(0,0,null));
         preview2D.appendChild(cell);
       });
     });
@@ -2149,13 +2149,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const y = Math.floor(((e.clientY - rect.top) / rect.height) * tex.size.y);
       if (x >= 0 && x < tex.size.x && y >= 0 && y < tex.size.y) {
         const v = layer[y]?.[x];
-        setPreviewValue(v);
+        setPreviewValue(x,y,v);
       } else {
-        setPreviewValue(null);
+        setPreviewValue(0,0,null);
       }
     };
     canvas.addEventListener('pointermove', handleHover);
-    canvas.addEventListener('pointerleave', () => setPreviewValue(null));
+    canvas.addEventListener('pointerleave', () => setPreviewValue(0,0,null));
     preview2D.appendChild(canvas);
   }
 
@@ -2532,7 +2532,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       return;
     }
     voxelRenderer.updateTexture(tex);
-    setPreviewValue(null);
+    setPreviewValue(0,0,null);
     voxelRenderer.render();
   }
 
