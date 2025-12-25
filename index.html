@@ -61,14 +61,16 @@
           <div>
             <h2 class="panel-title">Visualisation 2D/3D</h2>
           </div>
+          <div class="pill subtle">
+            <input type="range" min="0" value="0" id="zSlice" />
+            <span id="sliceLabel">Z = 0</span>
+          </div>
           <div class="toggle-group">
             <button class="toggle active" data-mode="2d">2D</button>
             <button class="toggle" data-mode="3d">3D</button>
           </div>
         </div>
         <div class="preview-meta">
-          <label>Couche Z <input type="range" min="0" value="0" id="zSlice" /></label>
-          <span id="sliceLabel">Z = 0</span>
           <label>Mode
             <select id="previewModeSelect">
               <option value="rgba">Image RGBA</option>

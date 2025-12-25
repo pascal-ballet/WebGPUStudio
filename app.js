@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
     isCompiled = true; updateButtons();
     const wgsl = buildCombinedWGSL();
     lastCompiledWGSL = wgsl;
-    alert(wgsl);
+    //alert(wgsl);
     const errors = validateWGSL(wgsl);
     if (errors.length === 0) {
       logConsole('Compilation statique : OK.', 'compile');
