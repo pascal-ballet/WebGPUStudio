@@ -48,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
   const stepCounter = document.getElementById('stepCounter');
-  const previewModeSelect = document.getElementById('previewModeSelect');
   const previewValueLabel = document.getElementById('previewValueLabel');
 
   const compileBtn  = document.getElementById('compileBtn');
@@ -97,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let simulationSteps = 0;
   let stepCounterBinding = null;
   let sharedPipelineLayout = null;
-  let previewVisualMode = 'rgba';
   let voxelRenderer = null;
   let previewValueCurrent = null;
 
@@ -161,14 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
     consoleMessages = [];
     renderConsole();
   });
-
-  if (previewModeSelect) {
-    previewModeSelect.addEventListener('change', (e) => {
-      previewVisualMode = 'rgba';
-      renderPreview();
-    });
-    previewModeSelect.value = 'rgba';
-  }
 
   setPreviewValue(0,0,null);
 
@@ -2066,40 +2056,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (previewMode === '2d') {
       preview2D.classList.remove('hidden');
       preview3D.classList.add('hidden');
-      if (previewVisualMode === 'rgba') {
-        render2DImage(tex);
-      } else {
-        render2D(tex);
-      }
+      render2DImage(tex);
     } else {
       setPreviewValue(0,0,null);
       preview2D.classList.add('hidden');
       preview3D.classList.remove('hidden');
-      if (previewVisualMode === 'rgba') {
-        render3DImage(tex);
-      } else {
-        render3D(tex);
-      }
+      render3DImage(tex);
     }
-  }
-
-  function render2D(tex) {
-    preview2D.classList.remove('image-mode');
-    const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
-    sliceLabel.textContent = `Z = ${sliceIndex}`;
-    const layer = tex.values[sliceIndex] || [];
-    preview2D.style.gridTemplateColumns = `repeat(${tex.size.x}, minmax(0, 1fr))`;
-    preview2D.innerHTML = '';
-    layer.forEach((row, j) => {
-      row.forEach((val, i) => {
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.textContent = tex.type === 'float' ? Number(val).toFixed(3) : Math.round(val);
-        cell.addEventListener('mouseenter', () => setPreviewValue(i,j,val));
-        cell.addEventListener('mouseleave', () => setPreviewValue(0,0,null));
-        preview2D.appendChild(cell);
-      });
-    });
   }
 
   function valueToRGBA(val, isFloat) {
@@ -2131,7 +2094,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const ctx = canvas.getContext('2d');
     const imageData = ctx.createImageData(tex.size.x, tex.size.y);
     let ptr = 0;
-    for (let j = 0; j < tex.size.y; j += 1) {
+    for (let j = tex.size.y-1; j >= 0 ; j -= 1) {
       for (let i = 0; i < tex.size.x; i += 1) {
         const v = layer[j]?.[i];
         const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
@@ -2148,8 +2111,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const x = Math.floor(((e.clientX - rect.left) / rect.width) * tex.size.x);
       const y = Math.floor(((e.clientY - rect.top) / rect.height) * tex.size.y);
       if (x >= 0 && x < tex.size.x && y >= 0 && y < tex.size.y) {
-        const v = layer[y]?.[x];
-        setPreviewValue(x,y,v);
+        const v = layer[tex.size.y-y-1]?.[x];
+        setPreviewValue(x,tex.size.y-y-1,v);
       } else {
         setPreviewValue(0,0,null);
       }
@@ -2157,30 +2120,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     canvas.addEventListener('pointermove', handleHover);
     canvas.addEventListener('pointerleave', () => setPreviewValue(0,0,null));
     preview2D.appendChild(canvas);
-  }
-
-  function render3D(tex) {
-    preview3D.innerHTML = '';
-    for (let k = 0; k < tex.size.z; k += 1) {
-      const slice = document.createElement('div');
-      slice.className = 'slice';
-      const title = document.createElement('h4');
-      title.textContent = `Couche Z = ${k}`;
-      slice.appendChild(title);
-      const grid = document.createElement('div');
-      grid.className = 'slice-grid';
-      grid.style.gridTemplateColumns = `repeat(${tex.size.x}, minmax(0, 1fr))`;
-      tex.values[k].forEach((row, j) => {
-        row.forEach((val, i) => {
-          const cell = document.createElement('div');
-          cell.className = 'cell';
-          cell.textContent = tex.type === 'float' ? Number(val).toFixed(3) : Math.round(val);
-          grid.appendChild(cell);
-        });
-      });
-      slice.appendChild(grid);
-      preview3D.appendChild(slice);
-    }
   }
 
   function add3(a, b) {
