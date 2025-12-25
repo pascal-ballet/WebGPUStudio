@@ -59,6 +59,19 @@ body {
 .pill.subtle {
   border: 1px solid var(--border);
   color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+}
+
+.toolbar-separator {
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+  align-self: stretch;
+  margin: 0 10px;
 }
 
 .app {

@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     previewValueCurrent = val;
     if (!previewValueLabel) return;
     const text = val === null || val === undefined ? '—' : val;
-    previewValueLabel.textContent = `(${x},${y}) : ${text}`;
+    previewValueLabel.textContent = `Val (${x},${y}) : ${text}`;
   }
 
   function renderStepCounter() {
