@@ -1046,9 +1046,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const val = Math.random();
       return Number(val.toFixed(3));
     }
-    // Génère un entier 32 bits couvrant tout l’intervalle signé
+    // Génère un entier 32 bits (signé ou non signé selon type)
     const r = (Math.random() * 0x100000000) >>> 0; // 0 .. 2^32-1
-    return (r | 0); // converti en signé 32 bits
+    return tex.type === 'uint' ? r >>> 0 : (r | 0);
   }
 
   function clamp(value, min, max) {
@@ -1460,7 +1460,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const textureSection = textures
       .map((tex, idx) => {
         const name = sanitizedIdentifier(tex.name || `texture${idx + 1}`, `texture${idx + 1}`);
-        const scalar = tex.type === 'float' ? 'f32' : 'i32';
+        const scalar = tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32');
         return `@group(0) @binding(${idx}) var<storage, read_write> ${name} : array<${scalar}>;`;
       })
       .join('\n');
@@ -1667,7 +1667,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     textures.forEach((tex, idx) => {
       bindings.set(idx, {
         binding: idx,
-        scalar: tex.type === 'float' ? 'f32' : 'i32',
+        scalar: tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32'),
         length: tex.size.x * tex.size.y * tex.size.z,
         tex,
         usage: 'storage',
@@ -1679,7 +1679,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     let match;
     while ((match = storageRegex.exec(wgsl)) !== null) {
       const binding = parseInt(match[1], 10);
-      const scalar = match[2].toLowerCase().startsWith('f') ? 'f32' : 'i32';
+      const scalar = match[2].toLowerCase().startsWith('f')
+        ? 'f32'
+        : (match[2].toLowerCase().startsWith('u') ? 'u32' : 'i32');
       if (!bindings.has(binding)) {
         bindings.set(binding, {
           binding,
@@ -1819,7 +1821,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const { x, y, z } = tex.size;
     const total = x * y * z;
     const isFloat = tex.type === 'float';
-    const flat = isFloat ? new Float32Array(total) : new Int32Array(total);
+    const isUint = tex.type === 'uint';
+    const flat = isFloat ? new Float32Array(total) : (isUint ? new Uint32Array(total) : new Int32Array(total));
     let ptr = 0;
     for (let k = 0; k < z; k += 1) {
       for (let j = 0; j < y; j += 1) {
