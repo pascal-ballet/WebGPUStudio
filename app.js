@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
     isCompiled = true; updateButtons();
     const wgsl = buildCombinedWGSL();
     lastCompiledWGSL = wgsl;
-    //alert(wgsl);
+    alert(wgsl);
     const errors = validateWGSL(wgsl);
     if (errors.length === 0) {
       logConsole('Compilation statique : OK.', 'compile');
@@ -1233,6 +1233,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (pipelineFieldShader) pipelineFieldShader.classList.toggle('hidden', isLoopStart || isLoopEnd);
     if (loopStartFields) loopStartFields.classList.toggle('hidden', !isLoopStart);
     if (loopEndFields) loopEndFields.classList.toggle('hidden', !isLoopEnd);
+    const isStep = !isLoopStart && !isLoopEnd;
+    const dispatchInputs = pipelineForm.querySelectorAll('input[name="pDispatchX"], input[name="pDispatchY"], input[name="pDispatchZ"]');
+    dispatchInputs.forEach((input) => {
+      input.required = isStep;
+      input.disabled = !isStep;
+    });
     // Handle name field visibility/readonly for loops
     const nameLabel = pipelineForm.querySelector('label:nth-of-type(1)');
     const nameInput = pipelineForm.querySelector('input[name="pipeName"]');
@@ -1464,7 +1470,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
     consoleMessages.slice(-100).forEach((msg) => {
       const line = document.createElement('div');
-      line.className = 'console-line';
+      let level = 'info';
+      const metaLower = (msg.meta || '').toLowerCase();
+      const msgLower = (msg.message || '').toLowerCase();
+      if (metaLower.includes('error') || metaLower.includes('err') || msgLower.includes('erreur wgsl')) level = 'error';
+      else if (metaLower.includes('warn')) level = 'warn';
+      line.className = `console-line ${level}`;
       const metaEl = document.createElement('span');
       metaEl.className = 'meta';
       const metaText = `[${msg.time}] ${msg.meta || ''}`.trim();
@@ -1924,28 +1935,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const time = new Date().toLocaleTimeString();
     consoleMessages.push({ time, message, meta });
     renderConsole();
-  }
-
-  function renderConsole() {
-    if (!consoleArea) return;
-    consoleArea.innerHTML = '';
-    if (!consoleMessages.length) {
-      const empty = document.createElement('div');
-      empty.className = 'console-line';
-      empty.textContent = 'Aucune erreur pour le moment.';
-      consoleArea.appendChild(empty);
-      return;
-    }
-    consoleMessages.slice(-100).forEach((msg) => {
-      const line = document.createElement('div');
-      line.className = 'console-line';
-      const metaEl = document.createElement('span');
-      metaEl.className = 'meta';
-      metaEl.textContent = `[${msg.time}] ${msg.meta || ''}`.trim();
-      line.appendChild(metaEl);
-      line.appendChild(document.createTextNode(msg.message));
-      consoleArea.appendChild(line);
-    });
   }
 
   function syncShaderEntryName(shader) {
