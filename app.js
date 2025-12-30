@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const moveDownBtn = document.getElementById('moveDownBtn');
   const addLoopStartBtn = document.getElementById('addLoopStartBtn');
   const addLoopEndBtn = document.getElementById('addLoopEndBtn');
+  const moveShaderUpBtn = document.getElementById('moveShaderUpBtn');
+  const moveShaderDownBtn = document.getElementById('moveShaderDownBtn');
   const pipelineForm = document.getElementById('pipelineForm');
   const pipelineShaderSelect = document.getElementById('pipelineShaderSelect');
   const pipelinePanelTitle = document.getElementById('pipelinePanelTitle');
@@ -49,6 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
   const stepCounter = document.getElementById('stepCounter');
   const previewValueLabel = document.getElementById('previewValueLabel');
+  const moveTextureUpBtn = document.getElementById('moveTextureUpBtn');
+  const moveTextureDownBtn = document.getElementById('moveTextureDownBtn');
 
   const compileBtn  = document.getElementById('compileBtn');
   const stepBtn     = document.getElementById('stepBtn');
@@ -738,6 +742,25 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderFunctionViews();
   });
 
+  function moveTexture(delta) {
+    const idx = textures.findIndex((t) => t.id === selectedTextureId);
+    if (idx === -1) return;
+    const newIndex = idx + delta;
+    if (newIndex < 0 || newIndex >= textures.length) return;
+    const [tex] = textures.splice(idx, 1);
+    textures.splice(newIndex, 0, tex);
+    selectedTextureId = tex.id;
+    renderTextureList();
+    renderPreview();
+  }
+
+  if (moveTextureUpBtn) {
+    moveTextureUpBtn.addEventListener('click', () => moveTexture(-1));
+  }
+  if (moveTextureDownBtn) {
+    moveTextureDownBtn.addEventListener('click', () => moveTexture(1));
+  }
+
   removeFunctionBtn.addEventListener('click', () => {
     if (!selectedFunctionId) return;
     functionsStore = functionsStore.filter((f) => f.id !== selectedFunctionId);
@@ -899,6 +922,23 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderShaderEditor(shader);
     renderPipelineViews();
   });
+
+  function moveShader(delta) {
+    const idx = shaders.findIndex((s) => s.id === selectedShaderId);
+    if (idx === -1) return;
+    const newIndex = idx + delta;
+    if (newIndex < 0 || newIndex >= shaders.length) return;
+    const [sh] = shaders.splice(idx, 1);
+    shaders.splice(newIndex, 0, sh);
+    selectedShaderId = sh.id;
+    renderShaderList();
+    renderShaderForm(sh);
+    renderShaderEditor(sh);
+    renderPipelineViews();
+  }
+
+  if (moveShaderUpBtn) moveShaderUpBtn.addEventListener('click', () => moveShader(-1));
+  if (moveShaderDownBtn) moveShaderDownBtn.addEventListener('click', () => moveShader(1));
 
   shaderEditor.addEventListener('input', (e) => {
     const shader = shaders.find((s) => s.id === selectedShaderId);
