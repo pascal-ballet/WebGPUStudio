@@ -23,6 +23,10 @@
 
   <main class="app">
     <div class="toolbar">
+      <button class="ghost" id="newProjectBtn">Nouveau</button>
+      <button class="ghost" id="loadBtn">Charger</button>
+      <button class="ghost" id="saveBtn">Sauver</button>
+      <span class="toolbar-separator" aria-hidden="true"></span>
       <button class="solid" id="compileBtn">Compile</button>
       <button class="ghost" id="stepBtn">Step</button>
       <button class="ghost" id="runBtn">Run</button>
@@ -32,9 +36,6 @@
       <input type="file" id="loadFileInput" accept=".wgstudio" style="display:none" />
       <span class="toolbar-separator" aria-hidden="true"></span>
       <span class="pill subtle" id="previewValueLabel">Valeurs : —</span>
-      <span class="toolbar-separator" aria-hidden="true"></span>
-      <button class="ghost" id="loadBtn">Charger</button>
-      <button class="ghost" id="saveBtn">Sauver</button>
     </div>
 
     <nav class="tabs">
@@ -70,8 +71,8 @@
             <span id="sliceLabel">Z = 0</span>
           </div>
           <div class="toggle-group">
-            <button class="toggle active" data-mode="2d">2D</button>
-            <button class="toggle" data-mode="3d">3D</button>
+            <button class="toggle" data-mode="2d">2D</button>
+            <button class="toggle active" data-mode="3d">3D</button>
           </div>
         </div>
         <div class="preview-area">

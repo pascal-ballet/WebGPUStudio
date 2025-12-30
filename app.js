@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const addLoopEndBtn = document.getElementById('addLoopEndBtn');
   const moveShaderUpBtn = document.getElementById('moveShaderUpBtn');
   const moveShaderDownBtn = document.getElementById('moveShaderDownBtn');
+  const newProjectBtn = document.getElementById('newProjectBtn');
   const pipelineForm = document.getElementById('pipelineForm');
   const pipelineShaderSelect = document.getElementById('pipelineShaderSelect');
   const pipelinePanelTitle = document.getElementById('pipelinePanelTitle');
@@ -83,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let textures = [];
   let selectedTextureId = null;
-  let previewMode = '2d';
+  let previewMode = '3d';
   let shaders = [];
   let selectedShaderId = null;
   let pipeline = [];
@@ -302,6 +303,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       };
       reader.readAsText(file);
+    });
+  }
+
+  if (newProjectBtn) {
+    newProjectBtn.addEventListener('click', () => {
+      textures = [];
+      shaders = [];
+      functionsStore = [];
+      pipeline = [];
+      selectedTextureId = null;
+      selectedShaderId = null;
+      selectedFunctionId = null;
+      selectedPipeId = null;
+      pipelineShaderChoiceId = null;
+      markBindingsDirty();
+      seedInitialShader();
+      seedInitialPipeline();
+      seedInitialFunction();
+      seedInitialTexture();
+      renderTextureList();
+      renderShaderList();
+      renderFunctionList();
+      renderPipelineViews();
+      renderPreview();
+      logConsole('Nouveau projet créé.', 'project');
     });
   }
 
@@ -2110,9 +2136,28 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function valueToRGBA(val, isFloat) {
     if (isFloat) {
-      const f = Math.max(0, Math.min(1, Number(val) || 0));
-      const c = Math.round(f * 255);
-      return [c, c, c, 255];
+      // Utilise uniquement la partie décimale pour une palette arc-en-ciel
+      const frac = (() => {
+        const n = Number(val) || 0;
+        return Math.abs(n - Math.floor(n));
+      })();
+      const t = Math.max(0, Math.min(1, frac));
+      // Arc-en-ciel simple : map 0..1 -> HSV (hue 0..300°), s=1, v=1
+      const hue = t * 300.0; // limite à magenta pour éviter retour rouge
+      const c = 1.0;
+      const x = c * (1.0 - Math.abs(((hue / 60.0) % 2.0) - 1.0));
+      let r = 0.0; let g = 0.0; let b = 0.0;
+      if (hue < 60.0)      { r = c; g = x; b = 0.0; }
+      else if (hue < 120.0){ r = x; g = c; b = 0.0; }
+      else if (hue < 180.0){ r = 0.0; g = c; b = x; }
+      else if (hue < 240.0){ r = 0.0; g = x; b = c; }
+      else                 { r = x; g = 0.0; b = c; }
+      return [
+        Math.round(r * 255),
+        Math.round(g * 255),
+        Math.round(b * 255),
+        255,
+      ];
     }
     const v = (Number(val) || 0) >>> 0;
     return [
