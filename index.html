@@ -39,9 +39,9 @@
     </div>
 
     <nav class="tabs">
-      <button class="tab active" data-tab="textures">Textures</button>
-      <button class="tab" data-tab="shaders">Compute Shaders</button>
+      <button class="tab active" data-tab="textures">Buffers</button>
       <button class="tab" data-tab="functions">Fonctions</button>
+      <button class="tab" data-tab="shaders">Compute Shaders</button>
       <button class="tab" data-tab="pass">Pass</button>
       <button class="tab" data-tab="console">Console</button>
     </nav>
@@ -50,7 +50,7 @@
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Textures</h2>
+            <h2 class="panel-title">Buffers</h2>
           </div>
           <div class="header-actions">
             <button class="ghost" id="addTextureBtn">+ Ajouter</button>
@@ -85,7 +85,7 @@
         <div class="panel-header">
           <div>
             <p class="eyebrow">Propriétés</p>
-            <h2 class="panel-title">Texture sélectionnée</h2>
+            <h2 class="panel-title">Buffer sélectionné</h2>
           </div>
           <button class="ghost danger" id="removeTextureBtn">Supprimer</button>
         </div>
@@ -109,7 +109,7 @@
 
           <label>Type
             <select name="type">
-              <option value="int">Entier (i32)></option>
+              <option value="int">Entier (i32)</option>
               <option value="uint">Entier non signé (u32)</option>
               <option value="float">Flottant (f32)</option>
             </select>
