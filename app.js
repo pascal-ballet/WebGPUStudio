@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const functionForm = document.getElementById('functionForm');
   const functionEditor = document.getElementById('functionEditor');
   const functionLines = document.getElementById('functionLines');
+  const texturesEditor = document.getElementById('texturesEditor');
   const statLines = document.getElementById('statLines');
   const statChars = document.getElementById('statChars');
   const consoleArea = document.getElementById('consoleArea');
@@ -147,6 +148,9 @@ document.addEventListener('DOMContentLoaded', () => {
       tabContents.forEach((c) => c.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+      if (tab.dataset.tab === 'functions') {
+        updateTextureDeclarationsEditor();
+      }
     });
   });
 
@@ -883,6 +887,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderTextureList();
     renderForm(newTexture);
     renderPreview();
+    updateTextureDeclarationsEditor();
   });
 
   removeBtn.addEventListener('click', () => {
@@ -896,6 +901,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       renderForm(tex);
     }
     renderPreview();
+    updateTextureDeclarationsEditor();
   });
 
   regenBtn.addEventListener('click', () => {
@@ -923,6 +929,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
     renderTextureList();
     renderPreview();
+    updateTextureDeclarationsEditor();
   });
 
   zSlice.addEventListener('input', () => {
@@ -980,6 +987,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       shaderEditor.scrollTop = scrollTop;
     }
     updateShaderLines(shader.code);
+    updateTextureDeclarationsEditor();
   });
 
   function buildTextureFromForm() {
@@ -1418,6 +1426,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderFunctionList();
     renderFunctionForm(fn || null);
     renderFunctionEditor(fn || null);
+    updateTextureDeclarationsEditor();
   }
 
   function updateFunctionStats(code) {
@@ -1494,44 +1503,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       .filter(Boolean)
       .join('\n\n');
 
-    const textureSection = textures
-      .map((tex, idx) => {
-        const name = sanitizedIdentifier(tex.name || `texture${idx + 1}`, `texture${idx + 1}`);
-        const scalar = tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32');
-        return `@group(0) @binding(${idx}) var<storage, read_write> ${name} : array<${scalar}>;`;
-      })
-      .join('\n');
-
-    const declSeen = new Set();
     const bindingOffset = textures.length;
     const primaryTextureName = textures[0]
       ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
       : null;
     const primaryTextureType = textures[0]?.type || null;
-    const shaderSection = shaders
-      .map((s) => normalizeComputeCode(
-        s.code,
-        bindingOffset,
-        declSeen,
-        primaryTextureName,
-        primaryTextureType,
-      ))
-      .filter(Boolean)
-      .join('\n\n');
-
-    const bindingRegex = /@binding\(\s*(\d+)\s*\)/g;
-    let maxBinding = -1;
-    const updateMax = (src) => {
-      let m = null;
-      while ((m = bindingRegex.exec(src)) !== null) {
-        const val = parseInt(m[1], 10);
-        if (!Number.isNaN(val)) maxBinding = Math.max(maxBinding, val);
-      }
-    };
-    updateMax(textureSection);
-    updateMax(shaderSection);
-    const stepBinding = (maxBinding >= 0 ? maxBinding + 1 : 0);
-    const stepSection = `@group(0) @binding(${stepBinding}) var<uniform> stepCounter : u32;`;
+    const textureSection = buildTextureDeclarationsWGSL();
+    const shaderSection = buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType);
+    const stepSection = buildStepDeclarationWGSL(textureSection, shaderSection);
 
     return [
       '// --- Fonctions ---',
@@ -1546,6 +1525,63 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       '// --- Compute Shaders ---',
       shaderSection || '// (aucun compute shader)',
     ].join('\n');
+  }
+
+  function buildTextureDeclarationsWGSL() {
+    return textures
+      .map((tex, idx) => {
+        const name = sanitizedIdentifier(tex.name || `texture${idx + 1}`, `texture${idx + 1}`);
+        const scalar = tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32');
+        return `@group(0) @binding(${idx}) var<storage, read_write> ${name} : array<${scalar}>;`;
+      })
+      .join('\n');
+  }
+
+  function buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType) {
+    const declSeen = new Set();
+    return shaders
+      .map((s) => normalizeComputeCode(
+        s.code,
+        bindingOffset,
+        declSeen,
+        primaryTextureName,
+        primaryTextureType,
+      ))
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  function buildStepDeclarationWGSL(textureSection, shaderSection) {
+    const bindingRegex = /@binding\(\s*(\d+)\s*\)/g;
+    let maxBinding = -1;
+    const updateMax = (src) => {
+      let m = null;
+      while ((m = bindingRegex.exec(src)) !== null) {
+        const val = parseInt(m[1], 10);
+        if (!Number.isNaN(val)) maxBinding = Math.max(maxBinding, val);
+      }
+    };
+    updateMax(textureSection);
+    updateMax(shaderSection);
+    const stepBinding = (maxBinding >= 0 ? maxBinding + 1 : 0);
+    return `@group(0) @binding(${stepBinding}) var<uniform> stepCounter : u32;`;
+  }
+
+  function updateTextureDeclarationsEditor() {
+    if (!texturesEditor) return;
+    const textureSection = buildTextureDeclarationsWGSL();
+    const bindingOffset = textures.length;
+    const primaryTextureName = textures[0]
+      ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
+      : null;
+    const primaryTextureType = textures[0]?.type || null;
+    const shaderSection = buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType);
+    const stepSection = buildStepDeclarationWGSL(textureSection, shaderSection);
+    const output = [
+      textureSection || '// (aucun buffer)',
+      stepSection,
+    ].join('\n');
+    texturesEditor.value = output;
   }
 
   function normalizeComputeCode(code, bindingOffset, declSeen, primaryTextureName, primaryTextureType) {
@@ -1929,6 +1965,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderShaderEditor(currentShader || null);
     renderFunctionViews();
     renderPipelineViews();
+    updateTextureDeclarationsEditor();
   }
 
   function logConsole(message, meta = '') {
@@ -2074,6 +2111,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       empty.textContent = 'Aucune texture. Ajoutez-en une.';
       textureList.appendChild(empty);
       removeBtn.disabled = true;
+      updateTextureDeclarationsEditor();
       return;
     }
     removeBtn.disabled = false;
@@ -2091,6 +2129,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       });
       textureList.appendChild(item);
     });
+    updateTextureDeclarationsEditor();
   }
 
   function renderForm(tex) {
@@ -2584,10 +2623,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderTextureList();
     renderForm(defaultTex);
     renderPreview();
+    updateTextureDeclarationsEditor();
   }
 
   seedInitialShader();
   seedInitialPipeline();
   seedInitialFunction();
   seedInitialTexture();
+  updateTextureDeclarationsEditor();
 });

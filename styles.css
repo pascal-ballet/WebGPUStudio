@@ -401,6 +401,12 @@ textarea {
   letter-spacing: 0.02em;
 }
 
+.small-code-editor {
+  min-height: 16px;
+  height: 64px;
+  width: 100%;
+}
+
 .grid-3 {
   display: grid;
   gap: 10px;
