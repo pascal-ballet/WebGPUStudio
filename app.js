@@ -1277,10 +1277,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       pipelineForm.pDispatchX.value = pipe.repeat || 1;
       pipelineForm.pDispatchY.value = '';
       pipelineForm.pDispatchZ.value = '';
-      if (pipelineFieldRepeat) {
-        const repeatInput = pipelineFieldRepeat.querySelector('input[name="loopRepeat"]');
-        if (repeatInput) repeatInput.value = pipe.repeat || 1;
-      }
+      const repeatInput = pipelineForm.querySelector('input[name="loopRepeat"]');
+      if (repeatInput) repeatInput.value = pipe.repeat || 1;
     } else if (isLoopEnd) {
       const opt = document.createElement('option');
       opt.value = '';

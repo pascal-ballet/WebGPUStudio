@@ -223,7 +223,7 @@
             <select name="shaderRef" id="pipelineShaderSelect"></select>
           </label>
 
-          <div id="loopStartFields" class="hidden">
+          <div id="loopStartFields" class="field-repeat hidden">
             <label>Répétitions
               <input type="number" name="loopRepeat" min="1" value="2" />
             </label>
@@ -243,13 +243,6 @@
                 <input type="number" name="pDispatchZ" min="1" max="65535" value="1" required />
               </label>
             </div>
-          </div>
-
-          <div id="loopStartFields" class="hidden">
-            <label>Répétitions
-              <input type="number" name="loopRepeat" min="0" value="2" />
-            </label>
-            <p class="meta">Les pipelines jusqu’à la fin de boucle seront répétés.</p>
           </div>
 
           <div id="loopEndFields" class="hidden">
