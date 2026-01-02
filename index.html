@@ -32,7 +32,7 @@
       <button class="ghost" id="runBtn">Run</button>
       <button class="ghost" id="pauseBtn">Pause</button>
       <button class="ghost danger" id="stopBtn">Stop</button>
-      <span class="pill subtle" id="stepCounter">Pass simulées : 0</span>
+      <span class="pill subtle" id="step">Pass simulées : 0</span>
       <input type="file" id="loadFileInput" accept=".wgstudio" style="display:none" />
       <span class="toolbar-separator" aria-hidden="true"></span>
       <span class="pill subtle" id="previewValueLabel">Valeurs : —</span>
@@ -276,7 +276,7 @@
         </div>
         <p class="eyebrow">Déclaration des Buffers</p>
         <textarea id="texturesEditor" class="small-code-editor" spellcheck="false" readonly>@group(0) @binding(0) var&lt;storage, read_write&gt; texture1 : array&lt;i32&gt;;
-@group(0) @binding(1) var&lt;uniform&gt; stepCounter : u32;</textarea>
+@group(0) @binding(1) var&lt;uniform&gt; step : u32;</textarea>
         <p class="eyebrow">Bibliothèque sélectionnée</p>
         <textarea id="functionEditor" class="code-editor" spellcheck="false"></textarea>
       </div>

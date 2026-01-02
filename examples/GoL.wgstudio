@@ -49976,7 +49976,7 @@
         "y": 8,
         "z": 1
       },
-      "code": "@compute @workgroup_size(8, 8, 1)\nfn Init(@builtin(global_invocation_id) gid : vec3<u32>) {\n    let index = gid.y * 128u + gid.x;\n    if (index < arrayLength(&texture1)) {\n        if (stepCounter == 0) {\n            texture1[index] = texture1[index] % 2;\n        }\n    }\n}\n"
+      "code": "@compute @workgroup_size(8, 8, 1)\nfn Init(@builtin(global_invocation_id) gid : vec3<u32>) {\n    let index = gid.y * 128u + gid.x;\n    if (index < arrayLength(&texture1)) {\n        if (step == 0) {\n            texture1[index] = texture1[index] % 2;\n        }\n    }\n}\n"
     },
     {
       "id": "ef94b585-89f1-4d53-b0a2-d4405287bc75",
@@ -49986,7 +49986,7 @@
         "y": 8,
         "z": 1
       },
-      "code": "@compute @workgroup_size(8, 8, 1)\nfn Play(@builtin(global_invocation_id) gid : vec3<u32>) {\n    let index = gid.y * 128u + gid.x;\n    if (stepCounter >= 1 && gid.x >= 1 && gid.x < SX-1 && gid.y >= 1 && gid.y < SX-1) {\n        let nb =     texture1[index-1] + texture1[index+1] + texture1[index-SX] + texture1[index+SX]\n                        +  texture1[index-1+SX] + texture1[index+1+SX] + texture1[index-SX-1] + texture1[index-SX+1];\n        if( texture1[index] == 0 ) { // dead cell\n            if ( nb == 3 ) {\n                texture2[index] = 1;\n            } else {\n                 texture2[index] = 0;\n            }\n        } else { // living cell\n            if ( nb == 2 || nb == 3 ) {\n              texture2[index] = 1;\n            } else {\n              texture2[index] = 0;\n            }\n        }\n    }\n}\n"
+      "code": "@compute @workgroup_size(8, 8, 1)\nfn Play(@builtin(global_invocation_id) gid : vec3<u32>) {\n    let index = gid.y * 128u + gid.x;\n    if (step >= 1 && gid.x >= 1 && gid.x < SX-1 && gid.y >= 1 && gid.y < SX-1) {\n        let nb =     texture1[index-1] + texture1[index+1] + texture1[index-SX] + texture1[index+SX]\n                        +  texture1[index-1+SX] + texture1[index+1+SX] + texture1[index-SX-1] + texture1[index-SX+1];\n        if( texture1[index] == 0 ) { // dead cell\n            if ( nb == 3 ) {\n                texture2[index] = 1;\n            } else {\n                 texture2[index] = 0;\n            }\n        } else { // living cell\n            if ( nb == 2 || nb == 3 ) {\n              texture2[index] = 1;\n            } else {\n              texture2[index] = 0;\n            }\n        }\n    }\n}\n"
     },
     {
       "id": "9144b504-4b3c-4a79-a938-09f42fc84120",
@@ -49996,7 +49996,7 @@
         "y": 8,
         "z": 1
       },
-      "code": "@compute @workgroup_size(8, 8, 1)\nfn Cpy(@builtin(global_invocation_id) gid : vec3<u32>) {\n    let index = gid.y * 128u + gid.x;\n    if (stepCounter >= 1 && index < arrayLength(&texture1)) {\n        texture1[index] = texture2[index] ;\n    }\n}\n"
+      "code": "@compute @workgroup_size(8, 8, 1)\nfn Cpy(@builtin(global_invocation_id) gid : vec3<u32>) {\n    let index = gid.y * 128u + gid.x;\n    if (step >= 1 && index < arrayLength(&texture1)) {\n        texture1[index] = texture2[index] ;\n    }\n}\n"
     },
     {
       "id": "360938a7-7e3a-4fab-a6aa-623c6da8e7cd",

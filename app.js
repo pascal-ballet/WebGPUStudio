@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const statChars = document.getElementById('statChars');
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
-  const stepCounter = document.getElementById('stepCounter');
+  const step = document.getElementById('step');
   const previewValueLabel = document.getElementById('previewValueLabel');
   const moveTextureUpBtn = document.getElementById('moveTextureUpBtn');
   const moveTextureDownBtn = document.getElementById('moveTextureDownBtn');
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let bindingMetas = new Map();
   let initialUploadDone = false;
   let simulationSteps = 0;
-  let stepCounterBinding = null;
+  let stepBinding = null;
   let sharedPipelineLayout = null;
   let voxelRenderer = null;
   let previewValueCurrent = null;
@@ -113,14 +113,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderStepCounter() {
-    if (!stepCounter) return;
-    stepCounter.textContent = `Pass simulées : ${simulationSteps}`;
+    if (!step) return;
+    step.textContent = `Pass simulées : ${simulationSteps}`;
   }
   renderStepCounter();
 
   function updateStepCounterBuffer() {
-    if (stepCounterBinding === null || !currentDevice) return;
-    const bufEntry = bindingBuffers.get(stepCounterBinding);
+    if (stepBinding === null || !currentDevice) return;
+    const bufEntry = bindingBuffers.get(stepBinding);
     if (!bufEntry) return;
     const data = new Uint32Array([simulationSteps]);
     currentDevice.queue.writeBuffer(
@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
     prep = null;
     bindingMetas = new Map();
     initialUploadDone = false;
-    stepCounterBinding = null;
+    stepBinding = null;
     sharedPipelineLayout = null;
   }
 
@@ -483,7 +483,7 @@ fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 }
 
-// example WGSL : colors, transparency and stepCounter
+// example WGSL : colors, transparency and step
 @compute @workgroup_size(4, 4, 4)
 fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
     let index = gid.z * 256u * 256u + gid.y * 256u + gid.x;
@@ -491,7 +491,7 @@ fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
         //texture1[index] = 0xFFFFFF;
     } else {
          if (gid.x <= 50) {
-            texture1[index] = 0x12AA0000 + i32(gid.y) + i32(stepCounter)  ;
+            texture1[index] = 0x12AA0000 + i32(gid.y) + i32(step)  ;
         }
         if (gid.x > 50 && gid.x < 150 ) {
             texture1[index] = 0x1200AA00 +( i32(gid.y)  );
@@ -506,13 +506,13 @@ fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
 @group(0) @binding(0) var<storage, read_write> texture1 : array<u32>;
 @group(0) @binding(1) var<storage, read_write> texture2 : array<u32>;
 
-@group(0) @binding(2) var<uniform> stepCounter : u32;
+@group(0) @binding(2) var<uniform> step : u32;
 
 @compute @workgroup_size(8, 8, 1)
 fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
     let index = gid.y * 32u + gid.x;
     if (index < arrayLength(&texture1)) {
-        if (stepCounter == 0) {
+        if (step == 0) {
             texture1[index] = texture1[index] % 2;
         }
     }
@@ -521,7 +521,7 @@ fn Compute1(@builtin(global_invocation_id) gid : vec3<u32>) {
 @compute @workgroup_size(8, 8, 1)
 fn Compute2(@builtin(global_invocation_id) gid : vec3<u32>) {
     let index = gid.y * 32u + gid.x;
-    if (stepCounter >= 1 && gid.x >= 1 && gid.x <= 30 && gid.y >= 1 && gid.y <= 30) {
+    if (step >= 1 && gid.x >= 1 && gid.x <= 30 && gid.y >= 1 && gid.y <= 30) {
         let nb =     texture1[index-1] + texture1[index+1] + texture1[index-32] + texture1[index+32]
                         +  texture1[index-1+32] + texture1[index+1+32] + texture1[index-32-1] + texture1[index-32+1];
         if( texture1[index] == 0 ) { // dead cell
@@ -543,7 +543,7 @@ fn Compute2(@builtin(global_invocation_id) gid : vec3<u32>) {
 @compute @workgroup_size(8, 8, 1)
 fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     let index = gid.y * 32u + gid.x;
-    if (stepCounter >= 1 && index < arrayLength(&texture1)) {
+    if (step >= 1 && index < arrayLength(&texture1)) {
         texture1[index] = texture2[index] ;
     }
 }
@@ -1562,7 +1562,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateMax(textureSection);
     updateMax(shaderSection);
     const stepBinding = (maxBinding >= 0 ? maxBinding + 1 : 0);
-    return `@group(0) @binding(${stepBinding}) var<uniform> stepCounter : u32;`;
+    return `@group(0) @binding(${stepBinding}) var<uniform> step : u32;`;
   }
 
   function updateTextureDeclarationsEditor() {
@@ -1765,7 +1765,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 
     // Step counter uniform if present in WGSL
-    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*stepCounter\s*:\s*u32\s*;/i.exec(wgsl);
+    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*step\s*:\s*u32\s*;/i.exec(wgsl);
     if (stepMatch) {
       const binding = parseInt(stepMatch[1], 10);
       bindings.set(binding, {
@@ -1805,7 +1805,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
       bindingMetas.set(binding, info);
       if (info.isStepCounter) {
-        stepCounterBinding = binding;
+        stepBinding = binding;
       }
     });
 
@@ -1834,8 +1834,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
     }
 
-    // stepCounter uniform si présent
-    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*stepCounter\s*:\s*u32\s*;/i.exec(wgsl);
+    // step uniform si présent
+    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*step\s*:\s*u32\s*;/i.exec(wgsl);
     if (stepMatch) {
       const binding = parseInt(stepMatch[1], 10);
       if (!Number.isNaN(binding)) {
