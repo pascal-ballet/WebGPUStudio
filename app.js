@@ -105,10 +105,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let voxelRenderer = null;
   let previewValueCurrent = null;
 
-  function setPreviewValue(x,y,val) {
+  function setPreviewValue(x,y,val,valType = null) {
     previewValueCurrent = val;
     if (!previewValueLabel) return;
-    const text = val === null || val === undefined ? '—' : val;
+    const displayVal = (valType === 'uint' && typeof val === 'number') ? (val >>> 0) : val;
+    const text = displayVal === null || displayVal === undefined ? '—' : displayVal;
     previewValueLabel.textContent = `Val (${x},${y}) : ${text}`;
   }
 
@@ -2220,13 +2221,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
     }
     ctx.putImageData(imageData, 0, 0);
+    const valType = tex.type;
     const handleHover = (e) => {
       const rect = canvas.getBoundingClientRect();
       const x = Math.floor(((e.clientX - rect.left) / rect.width) * tex.size.x);
       const y = Math.floor(((e.clientY - rect.top) / rect.height) * tex.size.y);
       if (x >= 0 && x < tex.size.x && y >= 0 && y < tex.size.y) {
         const v = layer[tex.size.y-y-1]?.[x];
-        setPreviewValue(x,tex.size.y-y-1,v);
+        setPreviewValue(x,tex.size.y-y-1,v,valType);
       } else {
         setPreviewValue(0,0,null);
       }
