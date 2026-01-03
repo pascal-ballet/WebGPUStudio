@@ -2448,8 +2448,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           const iy = Math.floor(uvw[1] * tex.size.y);
           const iz = Math.floor(uvw[2] * tex.size.z);
           const val = tex.values[iz]?.[iy]?.[ix];
-          const [ , , , a ] = valueToRGBA(val, tex.type === 'float');
-          if (((a || 0) / 255) * alphaScale > 0.02) {
+          const [r, g, b, a] = valueToRGBA(val, tex.type === 'float');
+          const alpha = (r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255);
+          if ((alpha / 255) * alphaScale > 0.02) {
             return val;
           }
         }
@@ -2500,10 +2501,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           for (let x = 0; x < tex.size.x; x += 1) {
             const v = tex.values[z]?.[y]?.[x];
             const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
+            const alpha = (r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255);
             data[ptr] = r;
             data[ptr + 1] = g;
             data[ptr + 2] = b;
-            data[ptr + 3] = a || 255;
+            data[ptr + 3] = alpha;
             ptr += 4;
           }
         }
