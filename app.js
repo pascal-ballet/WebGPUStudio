@@ -837,7 +837,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderShaderEditor(shader);
     pipeline.forEach((pipe) => {
       if (!pipe.dispatch) {
-        pipe.dispatch = { x: 4, y: 4, z: 1 };
+        pipe.dispatch = { x: 8, y: 4, z: 1 };
       }
     });
     renderPipelineViews();
@@ -993,7 +993,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function buildTextureFromForm() {
     const formData = new FormData(textureForm);
     const size = {
-      x: clamp(parseInt(formData.get('sizeX'), 10) || 32, 1, Number.MAX_SAFE_INTEGER),
+      x: clamp(parseInt(formData.get('sizeX'), 10) || 64, 1, Number.MAX_SAFE_INTEGER),
       y: clamp(parseInt(formData.get('sizeY'), 10) || 32, 1, Number.MAX_SAFE_INTEGER),
       z: clamp(parseInt(formData.get('sizeZ'), 10) || 1, 1, Number.MAX_SAFE_INTEGER),
     };
@@ -1126,7 +1126,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `pipe-${Date.now()}`,
       name: `Pipeline ${idx}`,
       shaderId,
-      dispatch: { x: 4, y: 4, z: 1 },
+      dispatch: { x: 8, y: 4, z: 1 },
     };
   }
 
@@ -2016,7 +2016,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return [
       '@compute @workgroup_size(8, 8, 1)',
       `fn ${entryName}(@builtin(global_invocation_id) gid : vec3<u32>) {`,
-      '    let index = gid.y * 32u + gid.x;',
+      '    let index = gid.y * 64u + gid.x;',
       '    if (index < arrayLength(&texture1)) {',
       '        texture1[index] = texture1[index] + 1;',
       '    }',
@@ -2612,7 +2612,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       name: 'texture1',
       type: 'int',
       fill: 'random',
-      size: { x: 32, y: 32, z: 1 },
+      size: { x: 64, y: 32, z: 1 },
       values: [],
     };
     regenerateValues(defaultTex);
