@@ -1,6 +1,6 @@
 # WebGPUStudio
 
-A software to teach and learn WebGPU
+A software to learn and teach WebGPU
 
 ## Play with it (soon - mid january 2026)
 
