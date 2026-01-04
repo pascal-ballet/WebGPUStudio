@@ -105,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let mouseYBinding = null;
   let mouseZBinding = null;
   let keyBinding = null;
+  let mouseBtnBinding = null;
   let sharedPipelineLayout = null;
   let voxelRenderer = null;
   let previewValueCurrent = null;
@@ -112,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let mouseYValue = 0;
   let mouseZValue = 0;
   let keyValue = 0;
+  let mouseBtnValue = 0;
 
   function setPreviewValue(x,y,val,valType = null) {
     previewValueCurrent = val;
@@ -135,6 +137,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   window.addEventListener('blur', () => {
     setKeyUniform(0);
+  });
+  window.addEventListener('pointerdown', (e) => {
+    const btn = (typeof e.button === 'number') ? (e.button + 1) : 0;
+    setMouseBtnUniform(btn);
+  });
+  window.addEventListener('pointerup', () => {
+    setMouseBtnUniform(0);
+  });
+  window.addEventListener('blur', () => {
+    setMouseBtnUniform(0);
   });
 
   function updateStepCounterBuffer() {
@@ -208,6 +220,20 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
+  function updateMouseBtnUniformBuffer() {
+    if (!currentDevice || mouseBtnBinding === null) return;
+    const bufEntry = bindingBuffers.get(mouseBtnBinding);
+    if (!bufEntry) return;
+    const data = new Uint32Array([mouseBtnValue]);
+    currentDevice.queue.writeBuffer(
+      bufEntry.buffer,
+      0,
+      data.buffer,
+      data.byteOffset,
+      data.byteLength,
+    );
+  }
+
   function keyEventToU32(e) {
     if (typeof e.keyCode === 'number' && e.keyCode > 0) return e.keyCode >>> 0;
     if (typeof e.which === 'number' && e.which > 0) return e.which >>> 0;
@@ -220,6 +246,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function setKeyUniform(value) {
     keyValue = (value >>> 0);
     updateKeyUniformBuffer();
+  }
+
+  function setMouseBtnUniform(value) {
+    mouseBtnValue = (value >>> 0);
+    updateMouseBtnUniformBuffer();
   }
 
   function setMouseUniformPosition(x, y, z, isInside) {
@@ -242,6 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mouseYBinding = null;
     mouseZBinding = null;
     keyBinding = null;
+    mouseBtnBinding = null;
     sharedPipelineLayout = null;
   }
 
@@ -490,6 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateStepCounterBuffer();
     updateMouseUniformBuffer();
     updateKeyUniformBuffer();
+    updateMouseBtnUniformBuffer();
     const commandEncoder = currentDevice.createCommandEncoder();
     const passEncoderCompute = commandEncoder.beginComputePass();
     dispatchList.forEach((entry) => {
@@ -507,6 +540,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateStepCounterBuffer();
     updateMouseUniformBuffer();
     updateKeyUniformBuffer();
+    updateMouseBtnUniformBuffer();
     handleReadbacks(readTasks);
   }
 
@@ -1679,12 +1713,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const mouseYBinding = stepBinding + 2;
     const mouseZBinding = stepBinding + 3;
     const keyBinding = stepBinding + 4;
+    const mouseBtnBinding = stepBinding + 5;
     return [
       `@group(0) @binding(${stepBinding}) var<uniform> step : u32;`,
       `@group(0) @binding(${mouseXBinding}) var<uniform> mouseX : u32;`,
       `@group(0) @binding(${mouseYBinding}) var<uniform> mouseY : u32;`,
       `@group(0) @binding(${mouseZBinding}) var<uniform> mouseZ : u32;`,
       `@group(0) @binding(${keyBinding}) var<uniform> key : u32; // VK codes`,
+      `@group(0) @binding(${mouseBtnBinding}) var<uniform> mouseBtn : u32;`,
     ].join('\n');
   }
 
@@ -1948,6 +1984,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         isKeyInput: true,
       });
     }
+    const mouseBtnMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseBtn\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseBtnMatch) {
+      const binding = parseInt(mouseBtnMatch[1], 10);
+      bindings.set(binding, {
+        binding,
+        scalar: 'u32',
+        length: 1,
+        tex: null,
+        usage: 'uniform',
+        isMouseBtn: true,
+      });
+    }
 
     bindings.forEach((info, binding) => {
       const byteLength = Math.max(4, info.length * 4);
@@ -1989,6 +2037,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
       if (info.isKeyInput) {
         keyBinding = binding;
+      }
+      if (info.isMouseBtn) {
+        mouseBtnBinding = binding;
       }
     });
 
@@ -2049,6 +2100,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const keyMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*key\s*:\s*u32\s*;/i.exec(wgsl);
     if (keyMatch) {
       const binding = parseInt(keyMatch[1], 10);
+      if (!Number.isNaN(binding)) {
+        bindings.set(binding, { binding, type: 'uniform' });
+      }
+    }
+    const mouseBtnMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseBtn\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseBtnMatch) {
+      const binding = parseInt(mouseBtnMatch[1], 10);
       if (!Number.isNaN(binding)) {
         bindings.set(binding, { binding, type: 'uniform' });
       }
