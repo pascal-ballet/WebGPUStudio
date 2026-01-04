@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const pipelineForm = document.getElementById('pipelineForm');
   const pipelineShaderSelect = document.getElementById('pipelineShaderSelect');
   const pipelinePanelTitle = document.getElementById('pipelinePanelTitle');
-  const stepFields = document.getElementById('stepFields');
+  const dispatchFields = document.getElementById('dispatchFields');
   const loopStartFields = document.getElementById('loopStartFields');
   const loopEndFields = document.getElementById('loopEndFields');
   const pipelineFieldShader = pipelineForm.querySelector('.field-shader');
@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let consoleMessages = [];
   let prep = null;
   let bindingsDirty = true; // force regen des bind groups/read buffers quand besoin
-  let isStepRunning = false; // Empêche les appels concurrents à playSimulationStep
+  let isSimulationRunning = false; // Empêche les appels concurrents à playSimulationStep
   let bindingMetas = new Map();
   let initialUploadDone = false;
   let simulationSteps = 0;
@@ -376,11 +376,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Wrapper pour une exécution complète (prépare + exécute)
   function playSimulationStep() {
-    if (isStepRunning) return;
-    isStepRunning = true;
+    if (isSimulationRunning) return;
+    isSimulationRunning = true;
     const prepared = initPipelineExecution();
     if (!prepared) {
-      isStepRunning = false;
+      isSimulationRunning = false;
       return;
     }
     const { readTasks, dispatchList } = prepared;
@@ -616,7 +616,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function handleReadbacks(readTasks) {
     let pending = readTasks.length;
     if (!pending) {
-      isStepRunning = false;
+      isSimulationRunning = false;
       return;
     }
     readTasks.forEach((task) => {
@@ -637,7 +637,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           if (pending === 0) {
             renderPreview();
             renderTextureList();
-            isStepRunning = false;
+            isSimulationRunning = false;
           }
         });
     });
@@ -1238,15 +1238,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const isLoopStart = pipe.type === 'loopStart';
     const isLoopEnd = pipe.type === 'loopEnd';
     inputs.forEach((el) => { el.disabled = isLoopEnd; });
-    if (stepFields) stepFields.classList.toggle('hidden', isLoopStart || isLoopEnd);
+    if (dispatchFields) dispatchFields.classList.toggle('hidden', isLoopStart || isLoopEnd);
     if (pipelineFieldShader) pipelineFieldShader.classList.toggle('hidden', isLoopStart || isLoopEnd);
     if (loopStartFields) loopStartFields.classList.toggle('hidden', !isLoopStart);
     if (loopEndFields) loopEndFields.classList.toggle('hidden', !isLoopEnd);
-    const isStep = !isLoopStart && !isLoopEnd;
+    const isPipeline = !isLoopStart && !isLoopEnd;
     const dispatchInputs = pipelineForm.querySelectorAll('input[name="pDispatchX"], input[name="pDispatchY"], input[name="pDispatchZ"]');
     dispatchInputs.forEach((input) => {
-      input.required = isStep;
-      input.disabled = !isStep;
+      input.required = isPipeline;
+      input.disabled = !isPipeline;
     });
     // Handle name field visibility/readonly for loops
     const nameLabel = pipelineForm.querySelector('label:nth-of-type(1)');
