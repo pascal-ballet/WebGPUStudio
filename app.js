@@ -103,11 +103,13 @@ document.addEventListener('DOMContentLoaded', () => {
   let stepBinding = null;
   let mouseXBinding = null;
   let mouseYBinding = null;
+  let mouseZBinding = null;
   let sharedPipelineLayout = null;
   let voxelRenderer = null;
   let previewValueCurrent = null;
   let mouseXValue = 0;
   let mouseYValue = 0;
+  let mouseZValue = 0;
 
   function setPreviewValue(x,y,val,valType = null) {
     previewValueCurrent = val;
@@ -165,13 +167,28 @@ document.addEventListener('DOMContentLoaded', () => {
         );
       }
     }
+    if (mouseZBinding !== null) {
+      const bufEntry = bindingBuffers.get(mouseZBinding);
+      if (bufEntry) {
+        const data = new Uint32Array([mouseZValue]);
+        currentDevice.queue.writeBuffer(
+          bufEntry.buffer,
+          0,
+          data.buffer,
+          data.byteOffset,
+          data.byteLength,
+        );
+      }
+    }
   }
 
-  function setMouseUniformPosition(x, y, isInside) {
+  function setMouseUniformPosition(x, y, z, isInside) {
     const nextX = isInside ? x : 0;
     const nextY = isInside ? y : 0;
+    const nextZ = z ?? 0;
     mouseXValue = nextX;
     mouseYValue = nextY;
+    mouseZValue = nextZ;
     updateMouseUniformBuffer();
   }
 
@@ -183,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
     stepBinding = null;
     mouseXBinding = null;
     mouseYBinding = null;
+    mouseZBinding = null;
     sharedPipelineLayout = null;
   }
 
@@ -981,6 +999,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   zSlice.addEventListener('input', () => {
     sliceLabel.textContent = `Z = ${zSlice.value}`;
+    const tex = textures.find((t) => t.id === selectedTextureId);
+    if (tex) {
+      const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
+      setMouseUniformPosition(0, 0, sliceIndex, false);
+    }
     renderPreview();
   });
 
@@ -1611,10 +1634,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const stepBinding = (maxBinding >= 0 ? maxBinding + 1 : 0);
     const mouseXBinding = stepBinding + 1;
     const mouseYBinding = stepBinding + 2;
+    const mouseZBinding = stepBinding + 3;
     return [
       `@group(0) @binding(${stepBinding}) var<uniform> step : u32;`,
       `@group(0) @binding(${mouseXBinding}) var<uniform> mouseX : u32;`,
       `@group(0) @binding(${mouseYBinding}) var<uniform> mouseY : u32;`,
+      `@group(0) @binding(${mouseZBinding}) var<uniform> mouseZ : u32;`,
     ].join('\n');
   }
 
@@ -1854,6 +1879,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         isMouseY: true,
       });
     }
+    const mouseZMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseZ\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseZMatch) {
+      const binding = parseInt(mouseZMatch[1], 10);
+      bindings.set(binding, {
+        binding,
+        scalar: 'u32',
+        length: 1,
+        tex: null,
+        usage: 'uniform',
+        isMouseZ: true,
+      });
+    }
 
     bindings.forEach((info, binding) => {
       const byteLength = Math.max(4, info.length * 4);
@@ -1889,6 +1926,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
       if (info.isMouseY) {
         mouseYBinding = binding;
+      }
+      if (info.isMouseZ) {
+        mouseZBinding = binding;
       }
     });
 
@@ -1935,6 +1975,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const mouseYMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseY\s*:\s*u32\s*;/i.exec(wgsl);
     if (mouseYMatch) {
       const binding = parseInt(mouseYMatch[1], 10);
+      if (!Number.isNaN(binding)) {
+        bindings.set(binding, { binding, type: 'uniform' });
+      }
+    }
+    const mouseZMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseZ\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseZMatch) {
+      const binding = parseInt(mouseZMatch[1], 10);
       if (!Number.isNaN(binding)) {
         bindings.set(binding, { binding, type: 'uniform' });
       }
@@ -2243,16 +2290,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       preview2D.innerHTML = '<p class="eyebrow">Aucune texture sélectionnée</p>';
       preview3D.innerHTML = '';
       setPreviewValue(0,0,null);
-      setMouseUniformPosition(0, 0, false);
+      setMouseUniformPosition(0, 0, 0, false);
       return;
     }
+    const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
     if (previewMode === '2d') {
       preview2D.classList.remove('hidden');
       preview3D.classList.add('hidden');
+      setMouseUniformPosition(0, 0, sliceIndex, false);
       render2DImage(tex);
     } else {
       setPreviewValue(0,0,null);
-      setMouseUniformPosition(0, 0, false);
+      setMouseUniformPosition(0, 0, sliceIndex, false);
       preview2D.classList.add('hidden');
       preview3D.classList.remove('hidden');
       render3DImage(tex);
@@ -2297,6 +2346,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     preview2D.classList.add('image-mode');
     const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
     sliceLabel.textContent = `Z = ${sliceIndex}`;
+    setMouseUniformPosition(0, 0, sliceIndex, false);
     const layer = tex.values[sliceIndex] || [];
     preview2D.innerHTML = '';
     preview2D.style.gridTemplateColumns = '';
@@ -2328,16 +2378,16 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         const invY = tex.size.y - y - 1;
         const v = layer[invY]?.[x];
         setPreviewValue(x, invY, v, valType);
-        setMouseUniformPosition(x, invY, true);
+        setMouseUniformPosition(x, invY, sliceIndex, true);
       } else {
         setPreviewValue(0,0,null);
-        setMouseUniformPosition(0, 0, false);
+        setMouseUniformPosition(0, 0, sliceIndex, false);
       }
     };
     canvas.addEventListener('pointermove', handleHover);
     canvas.addEventListener('pointerleave', () => {
       setPreviewValue(0,0,null);
-      setMouseUniformPosition(0, 0, false);
+      setMouseUniformPosition(0, 0, sliceIndex, false);
     });
     preview2D.appendChild(canvas);
   }
