@@ -101,9 +101,13 @@ document.addEventListener('DOMContentLoaded', () => {
   let initialUploadDone = false;
   let simulationSteps = 0;
   let stepBinding = null;
+  let mouseXBinding = null;
+  let mouseYBinding = null;
   let sharedPipelineLayout = null;
   let voxelRenderer = null;
   let previewValueCurrent = null;
+  let mouseXValue = 0;
+  let mouseYValue = 0;
 
   function setPreviewValue(x,y,val,valType = null) {
     previewValueCurrent = val;
@@ -133,12 +137,52 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
+  function updateMouseUniformBuffer() {
+    if (!currentDevice) return;
+    if (mouseXBinding !== null) {
+      const bufEntry = bindingBuffers.get(mouseXBinding);
+      if (bufEntry) {
+        const data = new Uint32Array([mouseXValue]);
+        currentDevice.queue.writeBuffer(
+          bufEntry.buffer,
+          0,
+          data.buffer,
+          data.byteOffset,
+          data.byteLength,
+        );
+      }
+    }
+    if (mouseYBinding !== null) {
+      const bufEntry = bindingBuffers.get(mouseYBinding);
+      if (bufEntry) {
+        const data = new Uint32Array([mouseYValue]);
+        currentDevice.queue.writeBuffer(
+          bufEntry.buffer,
+          0,
+          data.buffer,
+          data.byteOffset,
+          data.byteLength,
+        );
+      }
+    }
+  }
+
+  function setMouseUniformPosition(x, y, isInside) {
+    const nextX = isInside ? x : 0;
+    const nextY = isInside ? y : 0;
+    mouseXValue = nextX;
+    mouseYValue = nextY;
+    updateMouseUniformBuffer();
+  }
+
   function markBindingsDirty() {
     bindingsDirty = true;
     prep = null;
     bindingMetas = new Map();
     initialUploadDone = false;
     stepBinding = null;
+    mouseXBinding = null;
+    mouseYBinding = null;
     sharedPipelineLayout = null;
   }
 
@@ -385,6 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const { readTasks, dispatchList } = prepared;
     updateStepCounterBuffer();
+    updateMouseUniformBuffer();
     const commandEncoder = currentDevice.createCommandEncoder();
     const passEncoderCompute = commandEncoder.beginComputePass();
     dispatchList.forEach((entry) => {
@@ -400,6 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
     simulationSteps += 1;
     renderStepCounter();
     updateStepCounterBuffer();
+    updateMouseUniformBuffer();
     handleReadbacks(readTasks);
   }
 
@@ -1563,7 +1609,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateMax(textureSection);
     updateMax(shaderSection);
     const stepBinding = (maxBinding >= 0 ? maxBinding + 1 : 0);
-    return `@group(0) @binding(${stepBinding}) var<uniform> step : u32;`;
+    const mouseXBinding = stepBinding + 1;
+    const mouseYBinding = stepBinding + 2;
+    return [
+      `@group(0) @binding(${stepBinding}) var<uniform> step : u32;`,
+      `@group(0) @binding(${mouseXBinding}) var<uniform> mouseX : u32;`,
+      `@group(0) @binding(${mouseYBinding}) var<uniform> mouseY : u32;`,
+    ].join('\n');
   }
 
   function updateTextureDeclarationsEditor() {
@@ -1765,7 +1817,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
     }
 
-    // Step counter uniform if present in WGSL
+    // Step counter + mouse uniforms if present in WGSL
     const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*step\s*:\s*u32\s*;/i.exec(wgsl);
     if (stepMatch) {
       const binding = parseInt(stepMatch[1], 10);
@@ -1776,6 +1828,30 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         tex: null,
         usage: 'uniform',
         isStepCounter: true,
+      });
+    }
+    const mouseXMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseX\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseXMatch) {
+      const binding = parseInt(mouseXMatch[1], 10);
+      bindings.set(binding, {
+        binding,
+        scalar: 'u32',
+        length: 1,
+        tex: null,
+        usage: 'uniform',
+        isMouseX: true,
+      });
+    }
+    const mouseYMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseY\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseYMatch) {
+      const binding = parseInt(mouseYMatch[1], 10);
+      bindings.set(binding, {
+        binding,
+        scalar: 'u32',
+        length: 1,
+        tex: null,
+        usage: 'uniform',
+        isMouseY: true,
       });
     }
 
@@ -1808,6 +1884,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (info.isStepCounter) {
         stepBinding = binding;
       }
+      if (info.isMouseX) {
+        mouseXBinding = binding;
+      }
+      if (info.isMouseY) {
+        mouseYBinding = binding;
+      }
     });
 
     return { entries, readTasks };
@@ -1835,10 +1917,24 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
     }
 
-    // step uniform si présent
+    // step + mouse uniforms si présents
     const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*step\s*:\s*u32\s*;/i.exec(wgsl);
     if (stepMatch) {
       const binding = parseInt(stepMatch[1], 10);
+      if (!Number.isNaN(binding)) {
+        bindings.set(binding, { binding, type: 'uniform' });
+      }
+    }
+    const mouseXMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseX\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseXMatch) {
+      const binding = parseInt(mouseXMatch[1], 10);
+      if (!Number.isNaN(binding)) {
+        bindings.set(binding, { binding, type: 'uniform' });
+      }
+    }
+    const mouseYMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseY\s*:\s*u32\s*;/i.exec(wgsl);
+    if (mouseYMatch) {
+      const binding = parseInt(mouseYMatch[1], 10);
       if (!Number.isNaN(binding)) {
         bindings.set(binding, { binding, type: 'uniform' });
       }
@@ -2147,6 +2243,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       preview2D.innerHTML = '<p class="eyebrow">Aucune texture sélectionnée</p>';
       preview3D.innerHTML = '';
       setPreviewValue(0,0,null);
+      setMouseUniformPosition(0, 0, false);
       return;
     }
     if (previewMode === '2d') {
@@ -2155,6 +2252,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       render2DImage(tex);
     } else {
       setPreviewValue(0,0,null);
+      setMouseUniformPosition(0, 0, false);
       preview2D.classList.add('hidden');
       preview3D.classList.remove('hidden');
       render3DImage(tex);
@@ -2227,14 +2325,20 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const x = Math.floor(((e.clientX - rect.left) / rect.width) * tex.size.x);
       const y = Math.floor(((e.clientY - rect.top) / rect.height) * tex.size.y);
       if (x >= 0 && x < tex.size.x && y >= 0 && y < tex.size.y) {
-        const v = layer[tex.size.y-y-1]?.[x];
-        setPreviewValue(x,tex.size.y-y-1,v,valType);
+        const invY = tex.size.y - y - 1;
+        const v = layer[invY]?.[x];
+        setPreviewValue(x, invY, v, valType);
+        setMouseUniformPosition(x, invY, true);
       } else {
         setPreviewValue(0,0,null);
+        setMouseUniformPosition(0, 0, false);
       }
     };
     canvas.addEventListener('pointermove', handleHover);
-    canvas.addEventListener('pointerleave', () => setPreviewValue(0,0,null));
+    canvas.addEventListener('pointerleave', () => {
+      setPreviewValue(0,0,null);
+      setMouseUniformPosition(0, 0, false);
+    });
     preview2D.appendChild(canvas);
   }
 
