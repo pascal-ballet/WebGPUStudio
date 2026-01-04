@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const statChars = document.getElementById('statChars');
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
-  const step = document.getElementById('step');
+  const stepLabel = document.getElementById('stepLabel');
   const previewValueLabel = document.getElementById('previewValueLabel');
   const moveTextureUpBtn = document.getElementById('moveTextureUpBtn');
   const moveTextureDownBtn = document.getElementById('moveTextureDownBtn');
@@ -114,8 +114,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderStepCounter() {
-    if (!step) return;
-    step.textContent = `step = ${simulationSteps}`;
+    if (!stepLabel) return;
+    stepLabel.textContent = `step = ${simulationSteps}`;
   }
   renderStepCounter();
 
