@@ -1712,15 +1712,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const mouseXBinding = stepBinding + 1;
     const mouseYBinding = stepBinding + 2;
     const mouseZBinding = stepBinding + 3;
-    const keyBinding = stepBinding + 4;
-    const mouseBtnBinding = stepBinding + 5;
+    const mouseBtnBinding = stepBinding + 4;
+    const keyBinding = stepBinding + 5;
     return [
       `@group(0) @binding(${stepBinding}) var<uniform> step : u32;`,
       `@group(0) @binding(${mouseXBinding}) var<uniform> mouseX : u32;`,
       `@group(0) @binding(${mouseYBinding}) var<uniform> mouseY : u32;`,
       `@group(0) @binding(${mouseZBinding}) var<uniform> mouseZ : u32;`,
-      `@group(0) @binding(${keyBinding}) var<uniform> key : u32; // VK codes`,
       `@group(0) @binding(${mouseBtnBinding}) var<uniform> mouseBtn : u32;`,
+      `@group(0) @binding(${keyBinding}) var<uniform> key : u32; // VK codes`,
     ].join('\n');
   }
 
