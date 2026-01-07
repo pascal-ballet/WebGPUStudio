@@ -92,16 +92,6 @@ body {
   margin-top: 12px;
 }
 
-.account-mfa {
-  margin-top: 12px;
-  display: grid;
-  gap: 10px;
-}
-
-.account-mfa #recaptcha-container {
-  min-height: 1px;
-}
-
 .account-note {
   color: #ff9a9a;
   font-size: 12px;

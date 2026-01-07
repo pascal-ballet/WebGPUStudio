@@ -58,28 +58,6 @@
       <div class="account-actions hidden" id="accountActions">
         <button class="ghost" id="logoutBtn">Se deconnecter</button>
       </div>
-      <div class="account-mfa hidden" id="accountMfa">
-        <p class="eyebrow">Double verification (MFA)</p>
-        <form id="mfaEnrollForm" class="form account-form">
-          <label>Numero de telephone
-            <input type="tel" id="mfaPhone" placeholder="+33..." />
-          </label>
-          <button class="ghost" type="submit">Envoyer code</button>
-        </form>
-        <form id="mfaEnrollVerifyForm" class="form account-form hidden">
-          <label>Code SMS
-            <input type="text" id="mfaEnrollCode" inputmode="numeric" />
-          </label>
-          <button class="solid" type="submit">Activer MFA</button>
-        </form>
-        <form id="mfaSignInForm" class="form account-form hidden">
-          <label>Code MFA
-            <input type="text" id="mfaSignInCode" inputmode="numeric" />
-          </label>
-          <button class="solid" type="submit">Verifier</button>
-        </form>
-        <div id="recaptcha-container"></div>
-      </div>
       <p class="account-note" id="accountError"></p>
     </div>
   </div>

@@ -70,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const accountStatus = document.getElementById('accountStatus');
   const accountForms = document.getElementById('accountForms');
   const accountActions = document.getElementById('accountActions');
-  const accountMfa = document.getElementById('accountMfa');
   const accountError = document.getElementById('accountError');
   const signupForm = document.getElementById('signupForm');
   const signupEmail = document.getElementById('signupEmail');
@@ -80,22 +79,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginPassword = document.getElementById('loginPassword');
   const logoutBtn = document.getElementById('logoutBtn');
   const googleSignInBtn = document.getElementById('googleSignInBtn');
-  const mfaEnrollForm = document.getElementById('mfaEnrollForm');
-  const mfaEnrollVerifyForm = document.getElementById('mfaEnrollVerifyForm');
-  const mfaPhone = document.getElementById('mfaPhone');
-  const mfaEnrollCode = document.getElementById('mfaEnrollCode');
-  const mfaSignInForm = document.getElementById('mfaSignInForm');
-  const mfaSignInCode = document.getElementById('mfaSignInCode');
 
   let currentDevice = null;
   let computePipelines = [];
   let bindingBuffers = new Map();
   let lastCompiledWGSL = '';
   let firebaseAuth = null;
-  let mfaResolver = null;
-  let mfaSignInVerificationId = null;
-  let mfaEnrollVerificationId = null;
-  let recaptchaVerifier = null;
   // Your web app's Firebase configuration
   // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   // Replace with your Firebase config, or define window.WEBGPUSTUDIO_FIREBASE_CONFIG before app.js.
@@ -179,9 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
       signupPassword,
       loginEmail,
       loginPassword,
-      mfaPhone,
-      mfaEnrollCode,
-      mfaSignInCode,
     ];
     fields.forEach((el) => {
       if (el) el.disabled = disabled;
@@ -205,39 +191,6 @@ document.addEventListener('DOMContentLoaded', () => {
       : 'Non connecte';
     if (accountForms) accountForms.classList.toggle('hidden', !!user);
     if (accountActions) accountActions.classList.toggle('hidden', !user);
-    if (accountMfa) accountMfa.classList.toggle('hidden', !user && !mfaResolver);
-    if (!user) {
-      mfaEnrollVerificationId = null;
-      if (mfaEnrollVerifyForm) mfaEnrollVerifyForm.classList.add('hidden');
-    }
-    if (!mfaResolver && mfaSignInForm) mfaSignInForm.classList.add('hidden');
-    if (!user) {
-      resetMfaSignIn();
-      resetMfaEnroll();
-    }
-  }
-
-  function ensureRecaptcha() {
-    if (!firebaseAuth || recaptchaVerifier) return;
-    const container = document.getElementById('recaptcha-container');
-    if (!container) return;
-    recaptchaVerifier = new firebase.auth.RecaptchaVerifier(container, {
-      size: 'invisible',
-    });
-    recaptchaVerifier.render().catch((err) => {
-      setAccountError(err.message || String(err));
-    });
-  }
-
-  function resetMfaSignIn() {
-    mfaResolver = null;
-    mfaSignInVerificationId = null;
-    if (mfaSignInForm) mfaSignInForm.classList.add('hidden');
-  }
-
-  function resetMfaEnroll() {
-    mfaEnrollVerificationId = null;
-    if (mfaEnrollVerifyForm) mfaEnrollVerifyForm.classList.add('hidden');
   }
 
   function initFirebaseAuth() {
@@ -265,7 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
       setAccountState(user);
     });
     setAuthFormsDisabled(false);
-    ensureRecaptcha();
 
     if (signupForm) {
       signupForm.addEventListener('submit', (e) => {
@@ -296,24 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         setAccountError('');
         firebaseAuth.signInWithEmailAndPassword(email, password).catch((err) => {
-          if (err.code === 'auth/multi-factor-auth-required') {
-            mfaResolver = firebase.auth().getMultiFactorResolver(firebaseAuth, err);
-            setAccountError('MFA requis. Entrez le code recu par SMS.');
-            if (accountMfa) accountMfa.classList.remove('hidden');
-            if (mfaSignInForm) mfaSignInForm.classList.remove('hidden');
-            ensureRecaptcha();
-            const hint = mfaResolver.hints[0];
-            const phoneProvider = new firebase.auth.PhoneAuthProvider();
-            phoneProvider
-              .verifyPhoneNumber({ multiFactorHint: hint, session: mfaResolver.session }, recaptchaVerifier)
-              .then((verificationId) => {
-                mfaSignInVerificationId = verificationId;
-              })
-              .catch((mfaErr) => {
-                setAccountError(mfaErr.message || String(mfaErr));
-              });
-            return;
-          }
           setAccountError(err.message || String(err));
         });
       });
@@ -341,70 +275,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    if (mfaSignInForm) {
-      mfaSignInForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        if (!mfaResolver || !mfaSignInVerificationId) return;
-        const code = (mfaSignInCode?.value || '').trim();
-        if (!code) {
-          setAccountError('Code MFA requis.');
-          return;
-        }
-        const cred = firebase.auth.PhoneAuthProvider.credential(mfaSignInVerificationId, code);
-        const assertion = firebase.auth.PhoneMultiFactorGenerator.assertion(cred);
-        mfaResolver.resolveSignIn(assertion).then(() => {
-          resetMfaSignIn();
-          setAccountError('');
-        }).catch((mfaErr) => {
-          setAccountError(mfaErr.message || String(mfaErr));
-        });
-      });
-    }
-
-    if (mfaEnrollForm) {
-      mfaEnrollForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const user = firebaseAuth.currentUser;
-        if (!user) return;
-        const phone = (mfaPhone?.value || '').trim();
-        if (!phone) {
-          setAccountError('Numero de telephone requis.');
-          return;
-        }
-        ensureRecaptcha();
-        user.multiFactor.getSession().then((session) => {
-          const phoneProvider = new firebase.auth.PhoneAuthProvider();
-          return phoneProvider.verifyPhoneNumber({ phoneNumber: phone, session }, recaptchaVerifier);
-        }).then((verificationId) => {
-          mfaEnrollVerificationId = verificationId;
-          if (mfaEnrollVerifyForm) mfaEnrollVerifyForm.classList.remove('hidden');
-          setAccountError('Code envoye par SMS.');
-        }).catch((mfaErr) => {
-          setAccountError(mfaErr.message || String(mfaErr));
-        });
-      });
-    }
-
-    if (mfaEnrollVerifyForm) {
-      mfaEnrollVerifyForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const user = firebaseAuth.currentUser;
-        if (!user || !mfaEnrollVerificationId) return;
-        const code = (mfaEnrollCode?.value || '').trim();
-        if (!code) {
-          setAccountError('Code SMS requis.');
-          return;
-        }
-        const cred = firebase.auth.PhoneAuthProvider.credential(mfaEnrollVerificationId, code);
-        const assertion = firebase.auth.PhoneMultiFactorGenerator.assertion(cred);
-        user.multiFactor.enroll(assertion, 'phone').then(() => {
-          resetMfaEnroll();
-          setAccountError('MFA active.');
-        }).catch((mfaErr) => {
-          setAccountError(mfaErr.message || String(mfaErr));
-        });
-      });
-    }
   }
 
   if (accountToggleBtn) {
