@@ -86,13 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const mfaSignInForm = document.getElementById('mfaSignInForm');
   const mfaSignInCode = document.getElementById('mfaSignInCode');
 
-  // Vérifications simples pour s'assurer que les boutons sont bien trouvés
-  if (!compileBtn) console.warn('compileBtn introuvable dans le DOM'); else console.log('compileBtn détecté');
-  if (!runBtn) console.warn('runBtn introuvable dans le DOM'); else console.log('runBtn détecté');
-  if (!pauseBtn) console.warn('pauseBtn introuvable dans le DOM'); else console.log('pauseBtn détecté');
-  if (!stepBtn) console.warn('stepBtn introuvable dans le DOM'); else console.log('stepBtn détecté');
-  if (!stopBtn) console.warn('stopBtn introuvable dans le DOM'); else console.log('stopBtn détecté');
-    
   let currentDevice = null;
   let computePipelines = [];
   let bindingBuffers = new Map();
