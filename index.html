@@ -18,8 +18,68 @@
     <div class="header-actions">
       <span class="pill subtle">Learn and Teach WebGPU: GPU programming using Compute Shaders, for all)</span>
       <span class="pill primary">Version 1.0</span>
+      <button class="ghost small" id="accountToggleBtn">Mon compte</button>
     </div>
   </header>
+
+  <div class="account-panel hidden" id="accountPanel">
+    <div class="account-card">
+      <div class="account-header">
+        <div>
+          <p class="eyebrow">Mon compte</p>
+          <h2 class="panel-title">Acces</h2>
+        </div>
+        <button class="ghost small" id="accountCloseBtn">Fermer</button>
+      </div>
+      <div class="account-status" id="accountStatus">Non connecte</div>
+      <div class="account-forms" id="accountForms">
+        <form id="signupForm" class="form account-form">
+          <label>Email
+            <input type="email" id="signupEmail" required />
+          </label>
+          <label>Mot de passe
+            <input type="password" id="signupPassword" required />
+          </label>
+          <button class="solid" type="submit">Creer un compte</button>
+        </form>
+        <form id="loginForm" class="form account-form">
+          <label>Email
+            <input type="email" id="loginEmail" required />
+          </label>
+          <label>Mot de passe
+            <input type="password" id="loginPassword" required />
+          </label>
+          <button class="ghost" type="submit">Se connecter</button>
+        </form>
+      </div>
+      <div class="account-actions hidden" id="accountActions">
+        <button class="ghost" id="logoutBtn">Se deconnecter</button>
+      </div>
+      <div class="account-mfa hidden" id="accountMfa">
+        <p class="eyebrow">Double verification (MFA)</p>
+        <form id="mfaEnrollForm" class="form account-form">
+          <label>Numero de telephone
+            <input type="tel" id="mfaPhone" placeholder="+33..." />
+          </label>
+          <button class="ghost" type="submit">Envoyer code</button>
+        </form>
+        <form id="mfaEnrollVerifyForm" class="form account-form hidden">
+          <label>Code SMS
+            <input type="text" id="mfaEnrollCode" inputmode="numeric" />
+          </label>
+          <button class="solid" type="submit">Activer MFA</button>
+        </form>
+        <form id="mfaSignInForm" class="form account-form hidden">
+          <label>Code MFA
+            <input type="text" id="mfaSignInCode" inputmode="numeric" />
+          </label>
+          <button class="solid" type="submit">Verifier</button>
+        </form>
+        <div id="recaptcha-container"></div>
+      </div>
+      <p class="account-note" id="accountError"></p>
+    </div>
+  </div>
 
   <main class="app">
     <div class="toolbar">
@@ -332,6 +392,8 @@
     </section>
   </main>
 
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-auth-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
