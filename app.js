@@ -79,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginEmail = document.getElementById('loginEmail');
   const loginPassword = document.getElementById('loginPassword');
   const logoutBtn = document.getElementById('logoutBtn');
+  const googleSignInBtn = document.getElementById('googleSignInBtn');
   const mfaEnrollForm = document.getElementById('mfaEnrollForm');
   const mfaEnrollVerifyForm = document.getElementById('mfaEnrollVerifyForm');
   const mfaPhone = document.getElementById('mfaPhone');
@@ -95,12 +96,17 @@ document.addEventListener('DOMContentLoaded', () => {
   let mfaSignInVerificationId = null;
   let mfaEnrollVerificationId = null;
   let recaptchaVerifier = null;
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   // Replace with your Firebase config, or define window.WEBGPUSTUDIO_FIREBASE_CONFIG before app.js.
   const firebaseConfig = window.WEBGPUSTUDIO_FIREBASE_CONFIG || {
-    apiKey: 'REPLACE_ME',
-    authDomain: 'REPLACE_ME',
-    projectId: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
+    apiKey: "AIzaSyAOyPcqRPvWcN18fLta62APH903v2A-Vyg",
+    authDomain: "webgpustudio-73aa6.firebaseapp.com",
+    projectId: "webgpustudio-73aa6",
+    storageBucket: "webgpustudio-73aa6.firebasestorage.app",
+    messagingSenderId: "989858482994",
+    appId: "1:989858482994:web:76b84b9a1b923a1691652b",
+    measurementId: "G-410JNT7EZP",
   };
 
   let isCompiled = false;
@@ -188,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const btn = loginForm.querySelector('button[type="submit"]');
       if (btn) btn.disabled = disabled;
     }
+    if (googleSignInBtn) googleSignInBtn.disabled = disabled;
     if (logoutBtn) logoutBtn.disabled = disabled;
   }
 
@@ -317,6 +324,18 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         if (!firebaseAuth) return;
         firebaseAuth.signOut().catch((err) => {
+          setAccountError(err.message || String(err));
+        });
+      });
+    }
+
+    if (googleSignInBtn) {
+      googleSignInBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!firebaseAuth) return;
+        const provider = new firebase.auth.GoogleAuthProvider();
+        setAccountError('');
+        firebaseAuth.signInWithPopup(provider).catch((err) => {
           setAccountError(err.message || String(err));
         });
       });
