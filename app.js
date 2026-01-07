@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginEmail = document.getElementById('loginEmail');
   const loginPassword = document.getElementById('loginPassword');
   const logoutBtn = document.getElementById('logoutBtn');
+  const deleteAccountBtn = document.getElementById('deleteAccountBtn');
   const googleSignInBtn = document.getElementById('googleSignInBtn');
 
   let currentDevice = null;
@@ -182,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (googleSignInBtn) googleSignInBtn.disabled = disabled;
     if (logoutBtn) logoutBtn.disabled = disabled;
+    if (deleteAccountBtn) deleteAccountBtn.disabled = disabled;
   }
 
   function setAccountState(user) {
@@ -258,6 +260,21 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         if (!firebaseAuth) return;
         firebaseAuth.signOut().catch((err) => {
+          setAccountError(err.message || String(err));
+        });
+      });
+    }
+
+    if (deleteAccountBtn) {
+      deleteAccountBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!firebaseAuth) return;
+        const user = firebaseAuth.currentUser;
+        if (!user) return;
+        const ok = window.confirm('Confirmer la suppression definitive du compte ?');
+        if (!ok) return;
+        setAccountError('');
+        user.delete().catch((err) => {
           setAccountError(err.message || String(err));
         });
       });
