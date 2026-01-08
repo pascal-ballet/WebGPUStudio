@@ -71,12 +71,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const accountForms = document.getElementById('accountForms');
   const accountActions = document.getElementById('accountActions');
   const accountError = document.getElementById('accountError');
-  const signupForm = document.getElementById('signupForm');
-  const signupEmail = document.getElementById('signupEmail');
-  const signupPassword = document.getElementById('signupPassword');
-  const loginForm = document.getElementById('loginForm');
-  const loginEmail = document.getElementById('loginEmail');
-  const loginPassword = document.getElementById('loginPassword');
+  const authForm = document.getElementById('authForm');
+  const authEmail = document.getElementById('authEmail');
+  const authPassword = document.getElementById('authPassword');
+  const loginBtn = document.getElementById('loginBtn');
+  const signupBtn = document.getElementById('signupBtn');
   const logoutBtn = document.getElementById('logoutBtn');
   const deleteAccountBtn = document.getElementById('deleteAccountBtn');
   const googleSignInBtn = document.getElementById('googleSignInBtn');
@@ -165,22 +164,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setAuthFormsDisabled(disabled) {
     const fields = [
-      signupEmail,
-      signupPassword,
-      loginEmail,
-      loginPassword,
+      authEmail,
+      authPassword,
     ];
     fields.forEach((el) => {
       if (el) el.disabled = disabled;
     });
-    if (signupForm) {
-      const btn = signupForm.querySelector('button[type="submit"]');
-      if (btn) btn.disabled = disabled;
-    }
-    if (loginForm) {
-      const btn = loginForm.querySelector('button[type="submit"]');
-      if (btn) btn.disabled = disabled;
-    }
+    if (loginBtn) loginBtn.disabled = disabled;
+    if (signupBtn) signupBtn.disabled = disabled;
     if (googleSignInBtn) googleSignInBtn.disabled = disabled;
     if (logoutBtn) logoutBtn.disabled = disabled;
     if (deleteAccountBtn) deleteAccountBtn.disabled = disabled;
@@ -221,35 +212,50 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     setAuthFormsDisabled(false);
 
-    if (signupForm) {
-      signupForm.addEventListener('submit', (e) => {
+    const getAuthCredentials = () => {
+      const email = (authEmail?.value || '').trim();
+      const password = authPassword?.value || '';
+      if (!email || !password) {
+        setAccountError('Email et mot de passe requis.');
+        return null;
+      }
+      return { email, password };
+    };
+
+    if (loginBtn) {
+      loginBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (!firebaseAuth) return;
-        const email = (signupEmail?.value || '').trim();
-        const password = signupPassword?.value || '';
-        if (!email || !password) {
-          setAccountError('Email et mot de passe requis.');
-          return;
-        }
+        const creds = getAuthCredentials();
+        if (!creds) return;
         setAccountError('');
-        firebaseAuth.createUserWithEmailAndPassword(email, password).catch((err) => {
+        firebaseAuth.signInWithEmailAndPassword(creds.email, creds.password).catch((err) => {
           setAccountError(err.message || String(err));
         });
       });
     }
 
-    if (loginForm) {
-      loginForm.addEventListener('submit', (e) => {
+    if (signupBtn) {
+      signupBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (!firebaseAuth) return;
-        const email = (loginEmail?.value || '').trim();
-        const password = loginPassword?.value || '';
-        if (!email || !password) {
-          setAccountError('Email et mot de passe requis.');
-          return;
-        }
+        const creds = getAuthCredentials();
+        if (!creds) return;
         setAccountError('');
-        firebaseAuth.signInWithEmailAndPassword(email, password).catch((err) => {
+        firebaseAuth.createUserWithEmailAndPassword(creds.email, creds.password).catch((err) => {
+          setAccountError(err.message || String(err));
+        });
+      });
+    }
+
+    if (authForm) {
+      authForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!firebaseAuth) return;
+        const creds = getAuthCredentials();
+        if (!creds) return;
+        setAccountError('');
+        firebaseAuth.signInWithEmailAndPassword(creds.email, creds.password).catch((err) => {
           setAccountError(err.message || String(err));
         });
       });

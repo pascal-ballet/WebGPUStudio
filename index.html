@@ -22,49 +22,57 @@
     </div>
   </header>
 
+
+
+
+  <!-- Account Panel -->
   <div class="account-panel hidden" id="accountPanel">
     <div class="account-card">
-      <div class="account-header">
-        <div>
-          <h2 class="panel-title">Mes informations</h2>
-        </div>
-        <button class="ghost small" id="accountCloseBtn">Fermer</button>
-      </div>
+
+      <!-- NOT Connected -->
       <div class="account-status" id="accountStatus">Non connecte</div>
       <div class="account-forms" id="accountForms">
-        <form id="signupForm" class="form account-form">
+        <form id="authForm" class="form account-form">
           <label>Email
-            <input type="email" id="signupEmail" required />
+            <input type="email" id="authEmail" required />
           </label>
           <label>Mot de passe
-            <input type="password" id="signupPassword" required />
+            <input type="password" id="authPassword" required />
           </label>
-          <button class="solid" type="submit">Creer un compte</button>
-        </form>
-        <form id="loginForm" class="form account-form">
-          <label>Email
-            <input type="email" id="loginEmail" required />
-          </label>
-          <label>Mot de passe
-            <input type="password" id="loginPassword" required />
-          </label>
-          <button class="ghost" type="submit">Se connecter</button>
+          <div class="account-actions-row">
+            <button class="ghost" id="loginBtn" type="button">Se connecter</button>
+            <button class="solid" id="signupBtn" type="button">Creer un compte</button>
+          </div>
         </form>
         <div class="account-oauth">
           <button class="solid" id="googleSignInBtn" type="button">Se connecter avec Google</button>
         </div>
       </div>
-      <div class="checkbox">
-        <div>Recevoir la lettre d'information</div>
-        <input type="checkbox" id="newsletterOptIn" />
-      </div>
+
+
+      <!-- CONNECTED -->
       <div class="account-actions hidden" id="accountActions">
+        <div class="account-header">
+          <div>
+            <h2 class="panel-title">Mes informations</h2>
+          </div>
+        </div>
+        <div class="checkbox">
+            <input type="checkbox" id="newsletterOptIn" />
+            Recevoir la lettre d'information de WebGPU Studio
+        </div><br>
         <button class="ghost" id="logoutBtn">Se deconnecter</button>
         <button class="ghost danger" id="deleteAccountBtn">Supprimer mon compte</button>
       </div>
       <p class="account-note" id="accountError"></p>
     </div>
+    <button class="ghost small" id="accountCloseBtn">Masquer</button>
   </div>
+  <!-- END Account Panel -->
+
+
+
+
 
   <main class="app">
     <div class="toolbar">
