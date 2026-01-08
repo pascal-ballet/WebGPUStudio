@@ -213,7 +213,25 @@ document.addEventListener('DOMContentLoaded', () => {
     firestoreDb
       .collection('users')
       .doc(user.uid)
-      .set({ newsletterOptIn: !!newsletterOptIn.checked }, { merge: true })
+      .set({
+        newsletterOptIn: !!newsletterOptIn.checked,
+        email: user.email || null,
+        displayName: user.displayName || null,
+      }, { merge: true })
+      .catch((err) => {
+        setAccountError(err.message || String(err));
+      });
+  }
+
+  function ensureUserProfile(user) {
+    if (!firestoreDb || !user) return;
+    firestoreDb
+      .collection('users')
+      .doc(user.uid)
+      .set({
+        email: user.email || null,
+        displayName: user.displayName || null,
+      }, { merge: true })
       .catch((err) => {
         setAccountError(err.message || String(err));
       });
@@ -246,6 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setAccountError('');
       setAccountState(user);
       loadNewsletterPreference(user);
+      ensureUserProfile(user);
     });
     setAuthFormsDisabled(false);
 
