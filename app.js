@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const accountForms = document.getElementById('accountForms');
   const accountActions = document.getElementById('accountActions');
   const accountError = document.getElementById('accountError');
+  const newsletterOptIn = document.getElementById('newsletterOptIn');
   const authForm = document.getElementById('authForm');
   const authEmail = document.getElementById('authEmail');
   const authPassword = document.getElementById('authPassword');
@@ -85,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let bindingBuffers = new Map();
   let lastCompiledWGSL = '';
   let firebaseAuth = null;
+  let firestoreDb = null;
   // Your web app's Firebase configuration
   // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   // Replace with your Firebase config, or define window.WEBGPUSTUDIO_FIREBASE_CONFIG before app.js.
@@ -170,6 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fields.forEach((el) => {
       if (el) el.disabled = disabled;
     });
+    if (newsletterOptIn) newsletterOptIn.disabled = disabled;
     if (loginBtn) loginBtn.disabled = disabled;
     if (signupBtn) signupBtn.disabled = disabled;
     if (googleSignInBtn) googleSignInBtn.disabled = disabled;
@@ -180,10 +183,40 @@ document.addEventListener('DOMContentLoaded', () => {
   function setAccountState(user) {
     if (!accountStatus) return;
     accountStatus.textContent = user
-      ? `Connecte: ${user.email || 'utilisateur'}`
-      : 'Non connecte';
+      ? `Connecté: ${user.email || 'utilisateur'}`
+      : 'Non connecté';
     if (accountForms) accountForms.classList.toggle('hidden', !!user);
     if (accountActions) accountActions.classList.toggle('hidden', !user);
+    if (newsletterOptIn) {
+      newsletterOptIn.disabled = !user;
+      if (!user) newsletterOptIn.checked = false;
+    }
+  }
+
+  function loadNewsletterPreference(user) {
+    if (!firestoreDb || !newsletterOptIn || !user) return;
+    firestoreDb
+      .collection('users')
+      .doc(user.uid)
+      .get()
+      .then((doc) => {
+        const data = doc.exists ? doc.data() : {};
+        newsletterOptIn.checked = !!data.newsletterOptIn;
+      })
+      .catch((err) => {
+        setAccountError(err.message || String(err));
+      });
+  }
+
+  function saveNewsletterPreference(user) {
+    if (!firestoreDb || !newsletterOptIn || !user) return;
+    firestoreDb
+      .collection('users')
+      .doc(user.uid)
+      .set({ newsletterOptIn: !!newsletterOptIn.checked }, { merge: true })
+      .catch((err) => {
+        setAccountError(err.message || String(err));
+      });
   }
 
   function initFirebaseAuth() {
@@ -203,12 +236,16 @@ document.addEventListener('DOMContentLoaded', () => {
       firebase.initializeApp(firebaseConfig);
     }
     firebaseAuth = firebase.auth();
+    firestoreDb = (firebase.firestore && typeof firebase.firestore === 'function')
+      ? firebase.firestore()
+      : null;
     firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err) => {
       setAccountError(err.message || String(err));
     });
     firebaseAuth.onAuthStateChanged((user) => {
       setAccountError('');
       setAccountState(user);
+      loadNewsletterPreference(user);
     });
     setAuthFormsDisabled(false);
 
@@ -295,6 +332,14 @@ document.addEventListener('DOMContentLoaded', () => {
         firebaseAuth.signInWithPopup(provider).catch((err) => {
           setAccountError(err.message || String(err));
         });
+      });
+    }
+
+    if (newsletterOptIn) {
+      newsletterOptIn.addEventListener('change', () => {
+        const user = firebaseAuth.currentUser;
+        if (!user) return;
+        saveNewsletterPreference(user);
       });
     }
 

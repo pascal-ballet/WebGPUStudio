@@ -16,13 +16,11 @@
       <span class="pill subtle">by Pascal BALLET</span>
     </div>
     <div class="header-actions">
-      <span class="pill subtle">Learn and Teach WebGPU: GPU programming using Compute Shaders, for all)</span>
+      <span class="pill subtle">Apprendre and enseigner WebGPU facilement</span>
       <span class="pill primary">Version 1.0</span>
       <button class="ghost small" id="accountToggleBtn">Mon compte</button>
     </div>
   </header>
-
-
 
 
   <!-- Account Panel -->
@@ -49,7 +47,6 @@
         </div>
       </div>
 
-
       <!-- CONNECTED -->
       <div class="account-actions hidden" id="accountActions">
         <div class="account-header">
@@ -60,7 +57,9 @@
         <div class="checkbox">
             <input type="checkbox" id="newsletterOptIn" />
             Recevoir la lettre d'information de WebGPU Studio
-        </div><br>
+        </div>
+        <div class="account-status"><i>(email exclusivement pour la newsletter)</i></div>
+        <br>
         <button class="ghost" id="logoutBtn">Se deconnecter</button>
         <button class="ghost danger" id="deleteAccountBtn">Supprimer mon compte</button>
       </div>
@@ -69,9 +68,6 @@
     <button class="ghost small" id="accountCloseBtn">Masquer</button>
   </div>
   <!-- END Account Panel -->
-
-
-
 
 
   <main class="app">
@@ -387,6 +383,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
