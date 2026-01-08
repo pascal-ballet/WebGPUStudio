@@ -152,6 +152,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   renderStepCounter();
 
+  function enableTabIndent(editor) {
+    if (!editor) return;
+    editor.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      const scrollTop = editor.scrollTop;
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const value = editor.value;
+      const tab = '\t';
+      editor.value = `${value.slice(0, start)}${tab}${value.slice(end)}`;
+      const cursor = start + tab.length;
+      editor.selectionStart = cursor;
+      editor.selectionEnd = cursor;
+      editor.scrollTop = scrollTop;
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
   function toggleAccountPanel(forceOpen) {
     if (!accountPanel) return;
     if (forceOpen === true) accountPanel.classList.remove('hidden');
@@ -1213,6 +1232,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     fn.code = e.target.value;
     updateFunctionStats(fn.code);
   });
+  enableTabIndent(functionEditor);
 
   // Compute shader events
   addShaderBtn.addEventListener('click', () => {
@@ -1381,6 +1401,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateShaderLines(shader.code);
     updateTextureDeclarationsEditor();
   });
+  enableTabIndent(shaderEditor);
 
   function buildTextureFromForm() {
     const formData = new FormData(textureForm);
