@@ -435,6 +435,22 @@ input, select {
   font-size: 14px;
 }
 
+.checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+
+.checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 textarea {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
