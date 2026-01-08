@@ -691,6 +691,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (newProjectBtn) {
     newProjectBtn.addEventListener('click', () => {
+      const ok = window.confirm('Creer un nouveau projet ? Les donnees non sauvegardees seront perdues.');
+      if (!ok) return;
       textures = [];
       shaders = [];
       functionsStore = [];
