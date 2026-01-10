@@ -43,6 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const addFunctionBtn = document.getElementById('addFunctionBtn');
   const removeFunctionBtn = document.getElementById('removeFunctionBtn');
   const duplicateFunctionBtn = document.getElementById('duplicateFunctionBtn');
+  const moveFunctionUpBtn = document.getElementById('moveFunctionUpBtn');
+  const moveFunctionDownBtn = document.getElementById('moveFunctionDownBtn');
   const functionForm = document.getElementById('functionForm');
   const functionEditor = document.getElementById('functionEditor');
   const functionLines = document.getElementById('functionLines');
@@ -1177,6 +1179,24 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     selectedFunctionId = fn.id;
     renderFunctionViews();
   });
+
+  function moveFunction(delta) {
+    const idx = functionsStore.findIndex((f) => f.id === selectedFunctionId);
+    if (idx === -1) return;
+    const newIndex = idx + delta;
+    if (newIndex < 0 || newIndex >= functionsStore.length) return;
+    const [fn] = functionsStore.splice(idx, 1);
+    functionsStore.splice(newIndex, 0, fn);
+    selectedFunctionId = fn.id;
+    renderFunctionViews();
+  }
+
+  if (moveFunctionUpBtn) {
+    moveFunctionUpBtn.addEventListener('click', () => moveFunction(-1));
+  }
+  if (moveFunctionDownBtn) {
+    moveFunctionDownBtn.addEventListener('click', () => moveFunction(1));
+  }
 
   function moveTexture(delta) {
     const idx = textures.findIndex((t) => t.id === selectedTextureId);
