@@ -82,6 +82,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutBtn = document.getElementById('logoutBtn');
   const deleteAccountBtn = document.getElementById('deleteAccountBtn');
   const googleSignInBtn = document.getElementById('googleSignInBtn');
+  const systemStatus = document.getElementById('systemStatus');
+  const systemGpuVendor = document.getElementById('systemGpuVendor');
+  const systemGpuDevice = document.getElementById('systemGpuDevice');
+  const systemGpuArchitecture = document.getElementById('systemGpuArchitecture');
+  const systemGpuDescription = document.getElementById('systemGpuDescription');
+  const systemGpuDriver = document.getElementById('systemGpuDriver');
+  const systemGpuDriverInfo = document.getElementById('systemGpuDriverInfo');
+  const systemGpuVram = document.getElementById('systemGpuVram');
+  const systemGpuCores = document.getElementById('systemGpuCores');
+  const systemGpuClock = document.getElementById('systemGpuClock');
+  const systemWorkgroupMax = document.getElementById('systemWorkgroupMax');
+  const systemLimits = document.getElementById('systemLimits');
+  const systemFeatures = document.getElementById('systemFeatures');
 
   let currentDevice = null;
   let computePipelines = [];
@@ -153,6 +166,81 @@ document.addEventListener('DOMContentLoaded', () => {
     stepLabel.textContent = `step = ${simulationSteps}`;
   }
   renderStepCounter();
+
+  function setSystemField(el, value) {
+    if (!el) return;
+    el.textContent = value || '—';
+  }
+
+  function renderSystemList(el, entries) {
+    if (!el) return;
+    if (!entries || !entries.length) {
+      el.textContent = '—';
+      return;
+    }
+    el.innerHTML = entries.map((item) => `<div>${item}</div>`).join('');
+  }
+
+  async function updateSystemInfo(adapter, device, statusText = '') {
+    setSystemField(systemStatus, statusText || 'WebGPU actif');
+    if (!adapter || !device) {
+      setSystemField(systemGpuVendor, '—');
+      setSystemField(systemGpuDevice, '—');
+      setSystemField(systemGpuArchitecture, '—');
+      setSystemField(systemGpuDescription, '—');
+      setSystemField(systemGpuDriver, '—');
+      setSystemField(systemGpuDriverInfo, '—');
+      setSystemField(systemGpuVram, '—');
+      setSystemField(systemGpuCores, '—');
+      setSystemField(systemGpuClock, '—');
+      setSystemField(systemWorkgroupMax, '—');
+      renderSystemList(systemLimits, []);
+      renderSystemList(systemFeatures, []);
+      return;
+    }
+
+    let info = null;
+    if (typeof adapter.requestAdapterInfo === 'function') {
+      try {
+        info = await adapter.requestAdapterInfo();
+      } catch (err) {
+        info = null;
+      }
+    }
+
+    setSystemField(systemGpuVendor, info?.vendor);
+    setSystemField(systemGpuDevice, info?.device);
+    setSystemField(systemGpuArchitecture, info?.architecture);
+    setSystemField(systemGpuDescription, info?.description);
+    setSystemField(systemGpuDriver, info?.driver);
+    setSystemField(systemGpuDriverInfo, info?.driverInfo);
+    setSystemField(systemGpuVram, 'Non disponible via WebGPU');
+    setSystemField(systemGpuCores, 'Non disponible via WebGPU');
+    setSystemField(systemGpuClock, 'Non disponible via WebGPU');
+
+    const maxX = device.limits?.maxComputeWorkgroupSizeX;
+    const maxY = device.limits?.maxComputeWorkgroupSizeY;
+    const maxZ = device.limits?.maxComputeWorkgroupSizeZ;
+    if (typeof maxX === 'number' && typeof maxY === 'number' && typeof maxZ === 'number') {
+      setSystemField(systemWorkgroupMax, `${maxX} x ${maxY} x ${maxZ}`);
+    } else {
+      setSystemField(systemWorkgroupMax, '—');
+    }
+
+    const limits = [];
+    if (device.limits) {
+      for (const key in device.limits) {
+        if (Object.prototype.hasOwnProperty.call(device.limits, key)) {
+          limits.push(`${key}: ${device.limits[key]}`);
+        }
+      }
+    }
+    const features = device.features
+      ? Array.from(device.features).sort().map((f) => `• ${f}`)
+      : [];
+    renderSystemList(systemLimits, limits);
+    renderSystemList(systemFeatures, features);
+  }
 
   function enableTabIndent(editor) {
     if (!editor) return;
@@ -2089,6 +2177,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   async function compileWGSL(wgsl) {
     if (!navigator.gpu) {
       logConsole('WebGPU non supporté dans ce navigateur.', 'compile');
+      updateSystemInfo(null, null, 'WebGPU non supporté.');
       isCompiled = false; updateButtons();
       return null;
     }
@@ -2096,10 +2185,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const adapter = await navigator.gpu.requestAdapter();
       if (!adapter) {
         logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
+        updateSystemInfo(null, null, 'Adaptateur WebGPU indisponible.');
         isCompiled = false; updateButtons();
         return null;
       }
       const device = await adapter.requestDevice();
+      await updateSystemInfo(adapter, device);
       const module = device.createShaderModule({ code: wgsl });
       const info = typeof module.getCompilationInfo === 'function'
         ? await module.getCompilationInfo()
