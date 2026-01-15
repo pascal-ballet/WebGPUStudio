@@ -111,6 +111,10 @@ body {
   margin-bottom: 12px;
 }
 
+.system-controls {
+  margin-bottom: 12px;
+}
+
 .system-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -137,7 +141,8 @@ body {
 
 .system-list {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 12px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border);
   border-radius: 12px;

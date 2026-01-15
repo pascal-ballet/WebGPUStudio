@@ -95,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const systemWorkgroupMax = document.getElementById('systemWorkgroupMax');
   const systemLimits = document.getElementById('systemLimits');
   const systemFeatures = document.getElementById('systemFeatures');
+  const gpuPreference = document.getElementById('gpuPreference');
 
   let currentDevice = null;
   let computePipelines = [];
@@ -167,6 +168,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   renderStepCounter();
 
+  let gpuPowerPreference = 'high-performance';
+  if (gpuPreference) {
+    gpuPowerPreference = gpuPreference.value || gpuPowerPreference;
+    gpuPreference.addEventListener('change', () => {
+      gpuPowerPreference = gpuPreference.value || 'high-performance';
+      setSystemField(systemStatus, `Préférence GPU: ${gpuPowerPreference}`);
+    });
+  }
+
   function setSystemField(el, value) {
     if (!el) return;
     el.textContent = value || '—';
@@ -207,13 +217,16 @@ document.addEventListener('DOMContentLoaded', () => {
         info = null;
       }
     }
+    if (!info) {
+      setSystemField(systemStatus, 'Infos GPU non accessibles via WebGPU.');
+    }
 
-    setSystemField(systemGpuVendor, info?.vendor);
-    setSystemField(systemGpuDevice, info?.device);
-    setSystemField(systemGpuArchitecture, info?.architecture);
-    setSystemField(systemGpuDescription, info?.description);
-    setSystemField(systemGpuDriver, info?.driver);
-    setSystemField(systemGpuDriverInfo, info?.driverInfo);
+    setSystemField(systemGpuVendor, info?.vendor || 'Non disponible via WebGPU');
+    setSystemField(systemGpuDevice, info?.device || 'Non disponible via WebGPU');
+    setSystemField(systemGpuArchitecture, info?.architecture || 'Non disponible via WebGPU');
+    setSystemField(systemGpuDescription, info?.description || 'Non disponible via WebGPU');
+    setSystemField(systemGpuDriver, info?.driver || 'Non disponible via WebGPU');
+    setSystemField(systemGpuDriverInfo, info?.driverInfo || 'Non disponible via WebGPU');
     setSystemField(systemGpuVram, 'Non disponible via WebGPU');
     setSystemField(systemGpuCores, 'Non disponible via WebGPU');
     setSystemField(systemGpuClock, 'Non disponible via WebGPU');
@@ -229,11 +242,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const limits = [];
     if (device.limits) {
-      for (const key in device.limits) {
-        if (Object.prototype.hasOwnProperty.call(device.limits, key)) {
-          limits.push(`${key}: ${device.limits[key]}`);
+      const keys = Object.keys(device.limits);
+      const fallbackKeys = [
+        'maxBindGroups',
+        'maxBindingsPerBindGroup',
+        'maxBufferSize',
+        'maxComputeInvocationsPerWorkgroup',
+        'maxComputeWorkgroupSizeX',
+        'maxComputeWorkgroupSizeY',
+        'maxComputeWorkgroupSizeZ',
+        'maxComputeWorkgroupsPerDimension',
+        'maxDynamicStorageBuffersPerPipelineLayout',
+        'maxDynamicUniformBuffersPerPipelineLayout',
+        'maxSampledTexturesPerShaderStage',
+        'maxSamplersPerShaderStage',
+        'maxStorageBuffersPerShaderStage',
+        'maxStorageTexturesPerShaderStage',
+        'maxTextureArrayLayers',
+        'maxTextureDimension1D',
+        'maxTextureDimension2D',
+        'maxTextureDimension3D',
+        'maxUniformBufferBindingSize',
+        'maxUniformBuffersPerShaderStage',
+      ];
+      const list = keys.length ? keys : fallbackKeys;
+      list.forEach((key) => {
+        const value = device.limits[key];
+        if (typeof value !== 'function' && value !== undefined) {
+          limits.push(`${key}: ${value}`);
         }
-      }
+      });
     }
     const features = device.features
       ? Array.from(device.features).sort().map((f) => `• ${f}`)
@@ -2182,7 +2220,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       return null;
     }
     try {
-      const adapter = await navigator.gpu.requestAdapter();
+      const adapter = await navigator.gpu.requestAdapter({
+        powerPreference: gpuPowerPreference,
+      });
       if (!adapter) {
         logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
         updateSystemInfo(null, null, 'Adaptateur WebGPU indisponible.');

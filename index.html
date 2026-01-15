@@ -92,8 +92,8 @@
       <button class="tab" data-tab="functions">Fonctions</button>
       <button class="tab" data-tab="shaders">Compute Shaders</button>
       <button class="tab" data-tab="pass">Pass</button>
-      <button class="tab" data-tab="console">Console</button>
       <button class="tab" data-tab="system">Système</button>
+      <button class="tab" data-tab="console">Console</button>
     </nav>
 
     <section class="tab-content active" id="tab-textures">
@@ -392,49 +392,15 @@
             <h2 class="panel-title">Carte graphique WebGPU</h2>
           </div>
         </div>
-        <div class="system-status" id="systemStatus">—</div>
-        <div class="system-grid">
-          <div class="system-item">
-            <p class="eyebrow">Vendeur</p>
-            <div class="system-value" id="systemGpuVendor">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Device</p>
-            <div class="system-value" id="systemGpuDevice">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Architecture</p>
-            <div class="system-value" id="systemGpuArchitecture">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Description</p>
-            <div class="system-value" id="systemGpuDescription">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Driver</p>
-            <div class="system-value" id="systemGpuDriver">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Driver info</p>
-            <div class="system-value" id="systemGpuDriverInfo">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">VRAM</p>
-            <div class="system-value" id="systemGpuVram">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Nombre de cores</p>
-            <div class="system-value" id="systemGpuCores">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Fréquence</p>
-            <div class="system-value" id="systemGpuClock">—</div>
-          </div>
-          <div class="system-item">
-            <p class="eyebrow">Workgroup max</p>
-            <div class="system-value" id="systemWorkgroupMax">—</div>
-          </div>
+        <div class="system-controls">
+          <label>Préférence GPU
+            <select id="gpuPreference">
+              <option value="high-performance">Performance</option>
+              <option value="low-power">Économie</option>
+            </select>
+          </label>
         </div>
+        <div class="system-status" id="systemStatus">—</div>
         <div class="system-block">
           <p class="eyebrow">Limites</p>
           <div class="system-list" id="systemLimits">—</div>
