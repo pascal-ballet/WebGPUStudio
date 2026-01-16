@@ -13,12 +13,19 @@
   <header class="app-header">
     <div class="logo">
       WebGPU Studio
-      <span class="pill subtle">by Pascal BALLET</span>
+      <span class="pill subtle" data-i18n="header.by">by Pascal BALLET</span>
     </div>
     <div class="header-actions">
-      <span class="pill subtle">Apprendre et enseigner WebGPU facilement</span>
-      <span class="pill primary">Version 1.0</span>
-      <button class="ghost small" id="accountToggleBtn">Mon compte</button>
+      <span class="pill subtle" data-i18n="header.tagline">Apprendre et enseigner WebGPU facilement</span>
+      <span class="pill primary" data-i18n="header.version">Version 1.0</span>
+      <label class="lang-select">
+        <!--span data-i18n="language.label">Langue</span-->
+        <select id="languageSelect">
+          <option value="fr" data-i18n="language.fr">Français</option>
+          <option value="en" data-i18n="language.en">English</option>
+        </select>
+      </label>
+      <button class="ghost small" id="accountToggleBtn" data-i18n="header.account">Mon compte</button>
     </div>
   </header>
 
@@ -31,19 +38,19 @@
       <div class="account-status" id="accountStatus">Non connecte</div>
       <div class="account-forms" id="accountForms">
         <form id="authForm" class="form account-form">
-          <label>Email
+          <label data-i18n="account.email">Email
             <input type="email" id="authEmail" required />
           </label>
-          <label>Mot de passe
+          <label data-i18n="account.password">Mot de passe
             <input type="password" id="authPassword" required />
           </label>
           <div class="account-actions-row">
-            <button class="ghost" id="loginBtn" type="button">Se connecter</button>
-            <button class="solid" id="signupBtn" type="button">Creer un compte</button>
+            <button class="ghost" id="loginBtn" type="button" data-i18n="account.login">Se connecter</button>
+            <button class="solid" id="signupBtn" type="button" data-i18n="account.signup">Creer un compte</button>
           </div>
         </form>
         <div class="account-oauth">
-          <button class="solid" id="googleSignInBtn" type="button">Se connecter avec Google</button>
+          <button class="solid" id="googleSignInBtn" type="button" data-i18n="account.google">Se connecter avec Google</button>
         </div>
       </div>
 
@@ -51,36 +58,36 @@
       <div class="account-actions hidden" id="accountActions">
         <div class="account-header">
           <div>
-            <h2 class="panel-title">Mes informations</h2>
+            <h2 class="panel-title" data-i18n="account.info">Mes informations</h2>
           </div>
         </div>
         <div class="checkbox">
             <input type="checkbox" id="newsletterOptIn" />
-            Recevoir la lettre d'information de WebGPU Studio
+            <span data-i18n="account.newsletter">Recevoir la lettre d'information de WebGPU Studio</span>
         </div>
-        <div class="account-status"><i>(email exclusivement pour la newsletter)</i></div>
+        <div class="account-status"><i data-i18n="account.newsletterNote">(email exclusivement pour la newsletter)</i></div>
         <br>
-        <button class="ghost" id="logoutBtn">Se deconnecter</button>
-        <button class="ghost danger" id="deleteAccountBtn">Supprimer mon compte</button>
+        <button class="ghost" id="logoutBtn" data-i18n="account.logout">Se deconnecter</button>
+        <button class="ghost danger" id="deleteAccountBtn" data-i18n="account.delete">Supprimer mon compte</button>
       </div>
       <p class="account-note" id="accountError"></p>
     </div>
-    <button class="ghost small" id="accountCloseBtn">Masquer</button>
+    <button class="ghost small" id="accountCloseBtn" data-i18n="account.hide">Masquer</button>
   </div>
   <!-- END Account Panel -->
 
 
   <main class="app">
     <div class="toolbar">
-      <button class="ghost" id="newProjectBtn">Nouveau</button>
-      <button class="ghost" id="loadBtn">Charger</button>
-      <button class="ghost" id="saveBtn">Sauver</button>
+      <button class="ghost" id="newProjectBtn" data-i18n="toolbar.new">Nouveau</button>
+      <button class="ghost" id="loadBtn" data-i18n="toolbar.load">Charger</button>
+      <button class="ghost" id="saveBtn" data-i18n="toolbar.save">Sauver</button>
       <span class="toolbar-separator" aria-hidden="true"></span>
-      <button class="solid" id="compileBtn">Compile</button>
-      <button class="ghost" id="stepBtn">Step</button>
-      <button class="ghost" id="runBtn">Run</button>
-      <button class="ghost" id="pauseBtn">Pause</button>
-      <button class="ghost danger" id="stopBtn">Stop</button>
+      <button class="solid" id="compileBtn" data-i18n="toolbar.compile">Compile</button>
+      <button class="ghost" id="stepBtn" data-i18n="toolbar.step">Step</button>
+      <button class="ghost" id="runBtn" data-i18n="toolbar.run">Run</button>
+      <button class="ghost" id="pauseBtn" data-i18n="toolbar.pause">Pause</button>
+      <button class="ghost danger" id="stopBtn" data-i18n="toolbar.stop">Stop</button>
       <span class="pill subtle" id="stepLabel">step = 0</span>
       <input type="file" id="loadFileInput" accept=".wgstudio" style="display:none" />
       <span class="toolbar-separator" aria-hidden="true"></span>
@@ -88,22 +95,22 @@
     </div>
 
     <nav class="tabs">
-      <button class="tab active" data-tab="textures">Buffers</button>
-      <button class="tab" data-tab="functions">Fonctions</button>
-      <button class="tab" data-tab="shaders">Compute Shaders</button>
-      <button class="tab" data-tab="pass">Pass</button>
-      <button class="tab" data-tab="system">Système</button>
-      <button class="tab" data-tab="console">Console</button>
+      <button class="tab active" data-tab="textures" data-i18n="tabs.buffers">Buffers</button>
+      <button class="tab" data-tab="functions" data-i18n="tabs.functions">Fonctions</button>
+      <button class="tab" data-tab="shaders" data-i18n="tabs.shaders">Compute Shaders</button>
+      <button class="tab" data-tab="pass" data-i18n="tabs.pass">Pass</button>
+      <button class="tab" data-tab="system" data-i18n="tabs.system">Système</button>
+      <button class="tab" data-tab="console" data-i18n="tabs.console">Console</button>
     </nav>
 
     <section class="tab-content active" id="tab-textures">
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Buffers</h2>
+            <h2 class="panel-title" data-i18n="textures.title">Buffers</h2>
           </div>
           <div class="header-actions">
-            <button class="ghost" id="addTextureBtn">+ Ajouter</button>
+            <button class="ghost" id="addTextureBtn" data-i18n="textures.add">+ Ajouter</button>
             <button class="ghost small" id="moveTextureUpBtn">↑</button>
             <button class="ghost small" id="moveTextureDownBtn">↓</button>
           </div>
@@ -114,15 +121,15 @@
       <div class="panel panel-preview">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Visualisation 2D/3D</h2>
+            <h2 class="panel-title" data-i18n="textures.preview">Visualisation 2D/3D</h2>
           </div>
           <div class="pill subtle">
             <input type="range" min="0" value="0" id="zSlice" />
             <span id="sliceLabel">Z = 0</span>
           </div>
           <div class="toggle-group">
-            <button class="toggle" data-mode="2d">2D</button>
-            <button class="toggle active" data-mode="3d">3D</button>
+            <button class="toggle" data-mode="2d" data-i18n="textures.mode2d">2D</button>
+            <button class="toggle active" data-mode="3d" data-i18n="textures.mode3d">3D</button>
           </div>
         </div>
         <div class="preview-area">
@@ -134,47 +141,47 @@
       <div class="panel panel-properties">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Propriétés</p>
-            <h2 class="panel-title">Buffer sélectionné</h2>
+            <p class="eyebrow" data-i18n="common.properties">Propriétés</p>
+            <h2 class="panel-title" data-i18n="textures.selected">Buffer sélectionné</h2>
           </div>
-          <button class="ghost danger" id="removeTextureBtn">Supprimer</button>
+          <button class="ghost danger" id="removeTextureBtn" data-i18n="common.delete">Supprimer</button>
         </div>
 
         <form id="textureForm" class="form">
-          <label>Nom
+          <label data-i18n="common.name">Nom
             <input type="text" name="name" required />
           </label>
 
           <div class="grid-3">
-            <label>Taille X
+            <label data-i18n="textures.sizeX">Taille X
               <input type="number" name="sizeX" min="1" value="32" required />
             </label>
-            <label>Taille Y
+            <label data-i18n="textures.sizeY">Taille Y
               <input type="number" name="sizeY" min="1" value="32" required />
             </label>
-            <label>Taille Z
+            <label data-i18n="textures.sizeZ">Taille Z
               <input type="number" name="sizeZ" min="1" value="1" required />
             </label>
           </div>
 
-          <label>Type
+          <label data-i18n="textures.type">Type
             <select name="type">
-              <option value="int">Entier (i32)</option>
-              <option value="uint">Entier non signé (u32)</option>
-              <option value="float">Flottant (f32)</option>
+              <option value="int" data-i18n="textures.type.int">Entier (i32)</option>
+              <option value="uint" data-i18n="textures.type.uint">Entier non signé (u32)</option>
+              <option value="float" data-i18n="textures.type.float">Flottant (f32)</option>
             </select>
           </label>
 
-          <label>Valeurs initiales
+          <label data-i18n="textures.fill">Valeurs initiales
             <select name="fill">
-              <option value="empty">Matrice vide (zéro)</option>
-              <option value="random">Remplissage aléatoire</option>
+              <option value="empty" data-i18n="textures.fill.empty">Matrice vide (zéro)</option>
+              <option value="random" data-i18n="textures.fill.random">Remplissage aléatoire</option>
             </select>
           </label>
 
           <div class="grid-2">
-            <button type="submit" class="solid">Appliquer</button>
-            <button type="button" class="ghost" id="regenValuesBtn">Régénérer valeurs</button>
+            <button type="submit" class="solid" data-i18n="common.apply">Appliquer</button>
+            <button type="button" class="ghost" id="regenValuesBtn" data-i18n="textures.regen">Régénérer valeurs</button>
           </div>
         </form>
       </div>
@@ -184,10 +191,10 @@
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Compute Shaders</h2>
+            <h2 class="panel-title" data-i18n="tabs.shaders">Compute Shaders</h2>
           </div>
           <div class="header-actions">
-            <button class="ghost" id="addShaderBtn">+ Ajouter</button>
+            <button class="ghost" id="addShaderBtn" data-i18n="shaders.add">+ Ajouter</button>
             <button class="ghost small" id="moveShaderUpBtn">↑</button>
             <button class="ghost small" id="moveShaderDownBtn">↓</button>
           </div>
@@ -198,8 +205,8 @@
       <div class="panel panel-preview">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Web GPU Shader Language</p>
-            <h2 class="panel-title">WGSL</h2>
+            <p class="eyebrow" data-i18n="shaders.eyebrow">Web GPU Shader Language</p>
+            <h2 class="panel-title" data-i18n="shaders.wgsl">WGSL</h2>
           </div>
           <span class="pill subtle" id="shaderLines">0 lignes</span>
         </div>
@@ -209,20 +216,20 @@
       <div class="panel panel-properties">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Propriétés</p>
-            <h2 class="panel-title">Compute Shaders</h2>
+            <p class="eyebrow" data-i18n="common.properties">Propriétés</p>
+            <h2 class="panel-title" data-i18n="tabs.shaders">Compute Shaders</h2>
           </div>
-          <button class="ghost danger" id="removeShaderBtn">Supprimer</button>
+          <button class="ghost danger" id="removeShaderBtn" data-i18n="common.delete">Supprimer</button>
         </div>
 
         <form id="shaderForm" class="form">
-          <label>Nom
+          <label data-i18n="common.name">Nom
             <input type="text" name="shaderName" required />
           </label>
 
           <div class="grid-2">
-            <button type="submit" class="solid">Appliquer</button>
-            <button type="button" class="ghost" id="duplicateShaderBtn">Dupliquer</button>
+            <button type="submit" class="solid" data-i18n="common.apply">Appliquer</button>
+            <button type="button" class="ghost" id="duplicateShaderBtn" data-i18n="common.duplicate">Dupliquer</button>
           </div>
         </form>
       </div>
@@ -234,7 +241,7 @@
           <div>
             <h2 class="panel-title">Compute Shaders</h2>
           </div>
-          <button class="ghost" id="addPipelineBtn">+ Pipeline >>></button>
+          <button class="ghost" id="addPipelineBtn" data-i18n="pass.addPipeline">+ Pipeline &gt;&gt;&gt;</button>
         </div>
         <div class="list" id="pipelineList"></div>
       </div>
@@ -242,14 +249,14 @@
       <div class="panel panel-preview">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Ordre d'exécution des</p>
-            <h2 class="panel-title">Pipelines</h2>
+            <p class="eyebrow" data-i18n="pass.orderEyebrow">Ordre d'exécution des</p>
+            <h2 class="panel-title" data-i18n="pass.orderTitle">Pipelines</h2>
           </div>
           <div class="header-actions">
-            <button class="ghost small" id="moveUpBtn">Avant ←</button>
-            <button class="ghost small" id="moveDownBtn">→ Après</button>
-            <button class="ghost small" id="addLoopStartBtn">+ Début boucle</button>
-            <button class="ghost small" id="addLoopEndBtn">+ Fin boucle</button>
+            <button class="ghost small" id="moveUpBtn" data-i18n="pass.moveUp">Avant ←</button>
+            <button class="ghost small" id="moveDownBtn" data-i18n="pass.moveDown">→ Après</button>
+            <button class="ghost small" id="addLoopStartBtn" data-i18n="pass.loopStart">+ Début boucle</button>
+            <button class="ghost small" id="addLoopEndBtn" data-i18n="pass.loopEnd">+ Fin boucle</button>
           </div>
         </div>
         <div class="timeline" id="pipelineTimeline"></div>
@@ -258,30 +265,30 @@
         <div class="panel panel-properties">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Propriétés</p>
-              <h2 class="panel-title" id="pipelinePanelTitle">Pipeline sélectionnée</h2>
+              <p class="eyebrow" data-i18n="common.properties">Propriétés</p>
+              <h2 class="panel-title" id="pipelinePanelTitle" data-i18n="pipeline.selected">Pipeline sélectionnée</h2>
             </div>
-            <button class="ghost danger" id="removePipelineBtn">Supprimer</button>
+            <button class="ghost danger" id="removePipelineBtn" data-i18n="common.delete">Supprimer</button>
           </div>
 
         <form id="pipelineForm" class="form">
-          <label>Nom du pipe-line
+          <label data-i18n="pipeline.name">Nom du pipe-line
             <input type="text" name="pipeName" required />
           </label>
 
-          <label class="field-shader">Compute Shader associé
+          <label class="field-shader" data-i18n="pipeline.shader">Compute Shader associé
             <select name="shaderRef" id="pipelineShaderSelect"></select>
           </label>
 
           <div id="loopStartFields" class="field-repeat hidden">
-            <label>Répétitions
+            <label data-i18n="pipeline.repeats">Répétitions
               <input type="number" name="loopRepeat" min="1" value="2" />
             </label>
-            <p class="meta">Les pipelines jusqu’à la fin de boucle seront répétés.</p>
+            <p class="meta" data-i18n="pipeline.repeatsNote">Les pipelines jusqu’à la fin de boucle seront répétés.</p>
           </div>
 
           <div id="dispatchFields">
-            <label>dispatch Workgroups</label>
+            <label data-i18n="pipeline.dispatch">dispatch Workgroups</label>
             <div class="grid-3">
               <label>x
                 <input type="number" name="pDispatchX" min="1" max="65535" value="8" required />
@@ -296,10 +303,10 @@
           </div>
 
           <div id="loopEndFields" class="hidden">
-            <p class="meta">Fin de boucle : aucune propriété à configurer.</p>
+            <p class="meta" data-i18n="pipeline.loopEndNote">Fin de boucle : aucune propriété à configurer.</p>
           </div>
 
-          <button type="submit" class="solid">Appliquer</button>
+          <button type="submit" class="solid" data-i18n="common.apply">Appliquer</button>
         </form>
       </div>
     </section>
@@ -308,10 +315,10 @@
       <div class="panel panel-list">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Biblio-thèques</h2>
+            <h2 class="panel-title" data-i18n="functions.title">Biblio-thèques</h2>
           </div>
           <div class="header-actions">
-            <button class="ghost" id="addFunctionBtn">+ Ajouter</button>
+            <button class="ghost" id="addFunctionBtn" data-i18n="functions.add">+ Ajouter</button>
             <button class="ghost small" id="moveFunctionUpBtn">↑</button>
             <button class="ghost small" id="moveFunctionDownBtn">↓</button>
           </div>
@@ -322,12 +329,12 @@
       <div class="panel panel-preview">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Code</p>
-            <h2 class="panel-title">WGSL</h2>
+            <p class="eyebrow" data-i18n="functions.code">Code</p>
+            <h2 class="panel-title" data-i18n="functions.wgsl">WGSL</h2>
           </div>
           <span class="pill subtle" id="functionLines">0 lignes</span>
         </div>
-        <p class="eyebrow">Déclaration des <b>Buffers</b> et des <b>uniform</b></p>
+        <p class="eyebrow" data-i18n-html="functions.declarations">Déclaration des <b>Buffers</b> et des <b>uniform</b></p>
         <textarea id="texturesEditor" class="small-code-editor" spellcheck="false" readonly>@group(0) @binding(0) var&lt;storage, read_write&gt; texture1 : array&lt;i32&gt;;
 @group(0) @binding(1) var&lt;uniform&gt; step : u32;
 @group(0) @binding(2) var&lt;uniform&gt; mouseX : u32;
@@ -335,36 +342,36 @@
 @group(0) @binding(4) var&lt;uniform&gt; mouseZ : u32;
 @group(0) @binding(5) var&lt;uniform&gt; mouseBtn : u32;
 @group(0) @binding(6) var&lt;uniform&gt; key : u32;</textarea>
-        <p class="eyebrow">Bibliothèque sélectionnée</p>
+        <p class="eyebrow" data-i18n="functions.selectedLibrary">Bibliothèque sélectionnée</p>
         <textarea id="functionEditor" class="code-editor" spellcheck="false"></textarea>
       </div>
 
       <div class="panel panel-properties">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Propriétés</p>
-            <h2 class="panel-title">Fonction sélectionnée</h2>
+            <p class="eyebrow" data-i18n="common.properties">Propriétés</p>
+            <h2 class="panel-title" data-i18n="functions.selectedFunction">Fonction sélectionnée</h2>
           </div>
-          <button class="ghost danger" id="removeFunctionBtn">Supprimer</button>
+          <button class="ghost danger" id="removeFunctionBtn" data-i18n="common.delete">Supprimer</button>
         </div>
 
         <form id="functionForm" class="form">
-          <label>Nom
+          <label data-i18n="common.name">Nom
             <input type="text" name="functionName" required />
           </label>
           <div class="grid-2">
-            <button type="submit" class="solid">Appliquer</button>
-            <button type="button" class="ghost" id="duplicateFunctionBtn">Dupliquer</button>
+            <button type="submit" class="solid" data-i18n="common.apply">Appliquer</button>
+            <button type="button" class="ghost" id="duplicateFunctionBtn" data-i18n="common.duplicate">Dupliquer</button>
           </div>
         </form>
 
         <div class="stats-grid" id="functionStats">
           <div class="stat-card">
-            <p class="eyebrow">Lignes</p>
+            <p class="eyebrow" data-i18n="functions.lines">Lignes</p>
             <div class="stat-value" id="statLines">0</div>
           </div>
           <div class="stat-card">
-            <p class="eyebrow">Caractères</p>
+            <p class="eyebrow" data-i18n="functions.chars">Caractères</p>
             <div class="stat-value" id="statChars">0</div>
           </div>
         </div>
@@ -375,10 +382,10 @@
       <div class="panel panel-preview" style="grid-column: span 3;">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Console</p>
-            <h2 class="panel-title">Erreurs de compilation</h2>
+            <p class="eyebrow" data-i18n="console.title">Console</p>
+            <h2 class="panel-title" data-i18n="console.subtitle">Erreurs de compilation</h2>
           </div>
-          <button class="ghost" id="clearConsoleBtn">Effacer</button>
+          <button class="ghost" id="clearConsoleBtn" data-i18n="console.clear">Effacer</button>
         </div>
         <div class="console-area" id="consoleArea"></div>
       </div>
@@ -388,28 +395,28 @@
       <div class="panel panel-preview" style="grid-column: span 3;">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Système</p>
-            <h2 class="panel-title">Carte graphique WebGPU</h2>
+            <p class="eyebrow" data-i18n="system.title">Système</p>
+            <h2 class="panel-title" data-i18n="system.subtitle">Carte graphique WebGPU</h2>
           </div>
         </div>
         <div class="system-controls">
-          <label>Préférence GPU
+          <label data-i18n="system.preference">Préférence GPU
             <select id="gpuPreference">
-              <option value="high-performance">Performance</option>
-              <option value="low-power">Économie</option>
+              <option value="high-performance" data-i18n="system.preference.performance">Performance</option>
+              <option value="low-power" data-i18n="system.preference.lowPower">Économie</option>
             </select>
           </label>
         </div>
         <div class="system-block">
-          <p class="eyebrow">Fonctionnalités</p>
+          <p class="eyebrow" data-i18n="system.features">Fonctionnalités</p>
           <div class="system-list" id="systemFeatures">—</div>
         </div>
         <div class="system-block">
-          <p class="eyebrow">Limites</p>
+          <p class="eyebrow" data-i18n="system.limits">Limites</p>
           <div class="system-list" id="systemLimits">—</div>
         </div>
         <div class="system-block">
-          <p class="eyebrow">Core features</p>
+          <p class="eyebrow" data-i18n="system.coreFeatures">Core features</p>
           <div class="system-list" id="systemCoreFeatures">—</div>
         </div>
 
