@@ -94,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const systemGpuClock = document.getElementById('systemGpuClock');
   const systemWorkgroupMax = document.getElementById('systemWorkgroupMax');
   const systemLimits = document.getElementById('systemLimits');
+  const systemCoreFeatures = document.getElementById('systemCoreFeatures');
   const systemFeatures = document.getElementById('systemFeatures');
   const gpuPreference = document.getElementById('gpuPreference');
 
@@ -205,6 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setSystemField(systemGpuClock, '—');
       setSystemField(systemWorkgroupMax, '—');
       renderSystemList(systemLimits, []);
+      renderSystemList(systemCoreFeatures, []);
       renderSystemList(systemFeatures, []);
       return;
     }
@@ -218,7 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     if (!info) {
-      setSystemField(systemStatus, 'Infos GPU non accessibles via WebGPU.');
+      setSystemField(systemStatus, 'Autres infos GPU : non accessibles via WebGPU.');
     }
 
     setSystemField(systemGpuVendor, info?.vendor || 'Non disponible via WebGPU');
@@ -276,7 +278,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const features = device.features
       ? Array.from(device.features).sort().map((f) => `• ${f}`)
       : [];
+    const coreFeatures = adapter?.features
+      ? Array.from(adapter.features).sort().map((f) => `• ${f}`)
+      : [];
     renderSystemList(systemLimits, limits);
+    renderSystemList(systemCoreFeatures, coreFeatures);
     renderSystemList(systemFeatures, features);
   }
 
