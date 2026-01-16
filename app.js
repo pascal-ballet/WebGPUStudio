@@ -280,6 +280,26 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSystemList(systemFeatures, features);
   }
 
+  async function initSystemInfoOnLoad() {
+    if (!navigator.gpu) {
+      updateSystemInfo(null, null, 'WebGPU non supporté.');
+      return;
+    }
+    try {
+      const adapter = await navigator.gpu.requestAdapter({
+        powerPreference: gpuPowerPreference,
+      });
+      if (!adapter) {
+        updateSystemInfo(null, null, 'Adaptateur WebGPU indisponible.');
+        return;
+      }
+      const device = await adapter.requestDevice();
+      await updateSystemInfo(adapter, device);
+    } catch (err) {
+      updateSystemInfo(null, null, 'Échec initialisation WebGPU.');
+    }
+  }
+
   function enableTabIndent(editor) {
     if (!editor) return;
     editor.addEventListener('keydown', (e) => {
@@ -3329,4 +3349,5 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   seedInitialFunction();
   seedInitialTexture();
   updateTextureDeclarationsEditor();
+  initSystemInfoOnLoad();
 });
