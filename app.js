@@ -1,4 +1,156 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const runCompatibilityChecks = async () => {
+    const issues = [];
+
+    const isLocalhost = (() => {
+      try {
+        const h = window.location.hostname;
+        return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+      } catch (e) {
+        return false;
+      }
+    })();
+
+    if (!window.isSecureContext && !isLocalhost) {
+      issues.push({
+        title: 'Contexte sécurisé requis',
+        details: `URL actuelle: ${window.location.href}`,
+        fix: 'Ouvre l\'app via HTTPS ou via http://localhost (localhost est considéré comme sécurisé).',
+      });
+    }
+
+    if (!navigator.gpu) {
+      issues.push({
+        title: 'WebGPU indisponible',
+        details: 'navigator.gpu est absent. Le navigateur ne supporte pas WebGPU ou WebGPU est désactivé.',
+        fix: 'Chrome/Edge (recommandé): mets à jour le navigateur, puis ouvre chrome://flags, cherche “WebGPU”, active-le et redémarre.\n\nSafari: WebGPU est disponible selon la version (souvent via Safari Technology Preview ou Safari récent). Active le menu Développement (Réglages Safari > Avancé > “Afficher le menu Développement”), puis Développement > “Fonctionnalités expérimentales” > active “WebGPU”, et redémarre Safari.\n\nFirefox: WebGPU n\'est pas toujours activé dans la version stable. Essaie Firefox Nightly, puis about:config > active dom.webgpu.enabled (et redémarre).',
+      });
+    } else {
+      let adapter = null;
+      try {
+        adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      } catch (e) {
+        adapter = null;
+      }
+      if (!adapter) {
+        issues.push({
+          title: 'Impossible d\'obtenir un adaptateur WebGPU',
+          details: 'navigator.gpu.requestAdapter() a retourné null (ou a échoué).',
+          fix: 'Vérifie que l\'accélération matérielle est activée, que les drivers GPU sont à jour, puis redémarre le navigateur.\n\nChrome/Edge: consulte chrome://gpu pour voir si l\'accélération et WebGPU sont bien actifs.\nSafari: Développement > Fonctionnalités expérimentales > vérifie que “WebGPU” est activé.\nFirefox Nightly: about:config > dom.webgpu.enabled = true (et redémarre).',
+        });
+      } else {
+        let device = null;
+        try {
+          device = await adapter.requestDevice();
+        } catch (e) {
+          device = null;
+        }
+        if (!device) {
+          issues.push({
+            title: 'Impossible de créer un device WebGPU',
+            details: 'adapter.requestDevice() a échoué.',
+            fix: 'Mets à jour le navigateur et les drivers GPU. Si tu utilises une VM, un environnement sans GPU, ou un mode “remote desktop”, WebGPU peut être indisponible.\n\nChrome/Edge: chrome://gpu pour diagnostiquer.\nSafari: vérifie WebGPU dans les Fonctionnalités expérimentales et redémarre.\nFirefox (Nightly): dom.webgpu.enabled dans about:config, puis redémarre.',
+          });
+        } else {
+          try {
+            if (typeof device.destroy === 'function') device.destroy();
+          } catch (e) {
+          }
+        }
+      }
+    }
+
+    const hasWebGL2 = (() => {
+      try {
+        const c = document.createElement('canvas');
+        return Boolean(c.getContext('webgl2'));
+      } catch (e) {
+        return false;
+      }
+    })();
+
+    if (!hasWebGL2) {
+      issues.push({
+        title: 'WebGL2 requis (aperçu 3D)',
+        details: 'Le contexte WebGL2 n\'a pas pu être créé.',
+        fix: 'Active l\'accélération matérielle dans le navigateur et mets à jour les drivers GPU. Sur certains environnements (VM, remote desktop), WebGL2 peut être désactivé.\n\nChrome/Edge: vérifie chrome://gpu.\nSafari: Développement > Fonctionnalités expérimentales > active WebGL 2.0 (si présent) et redémarre Safari.\nFirefox: vérifie que WebGL est activé (about:config, webgl.disabled doit être false).',
+      });
+    }
+
+    return { ok: issues.length === 0, issues };
+  };
+
+  const showCompatibilityGate = (issues) => {
+    const existing = document.getElementById('wgstudioCompatGate');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'wgstudioCompatGate';
+    modal.className = 'modal';
+
+    const content = document.createElement('div');
+    content.className = 'modal-content';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+
+    const title = document.createElement('h2');
+    title.className = 'panel-title';
+    title.textContent = 'Configuration requise non satisfaite';
+
+    const actions = document.createElement('div');
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'solid';
+    retryBtn.type = 'button';
+    retryBtn.textContent = 'Re-tester (recharge la page)';
+    retryBtn.addEventListener('click', () => {
+      try {
+        window.location.reload();
+      } catch (e) {
+      }
+    });
+    actions.appendChild(retryBtn);
+
+    header.appendChild(title);
+    header.appendChild(actions);
+
+    const intro = document.createElement('p');
+    intro.className = 'account-note';
+    intro.textContent = 'Tant que ces points ne sont pas corrigés, WebGPU Studio ne démarre pas.';
+
+    const grid = document.createElement('div');
+    grid.className = 'system-grid';
+
+    issues.forEach((it) => {
+      const card = document.createElement('div');
+      card.className = 'system-card';
+
+      const eyebrow = document.createElement('p');
+      eyebrow.className = 'eyebrow';
+      eyebrow.textContent = it.title;
+
+      const box = document.createElement('div');
+      box.className = 'system-box';
+      box.textContent = `${it.details}\n\nComment résoudre:\n${it.fix}`;
+
+      card.appendChild(eyebrow);
+      card.appendChild(box);
+      grid.appendChild(card);
+    });
+
+    content.appendChild(header);
+    content.appendChild(intro);
+    content.appendChild(grid);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+  };
+
+  const compat = await runCompatibilityChecks();
+  if (!compat.ok) {
+    showCompatibilityGate(compat.issues);
+    return;
+  }
+
   const tabs = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
   const textureList = document.getElementById('textureList');
@@ -15,7 +167,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const shaderList = document.getElementById('shaderList');
   const shaderForm = document.getElementById('shaderForm');
   const shaderEditor = document.getElementById('shaderEditor');
+  const shaderGutter = document.getElementById('shaderGutter');
   const shaderLines = document.getElementById('shaderLines');
+  const shaderDiagnostics = document.getElementById('shaderDiagnostics');
   const addShaderBtn = document.getElementById('addShaderBtn');
   const removeShaderBtn = document.getElementById('removeShaderBtn');
   const duplicateShaderBtn = document.getElementById('duplicateShaderBtn');
@@ -31,7 +185,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const moveShaderDownBtn = document.getElementById('moveShaderDownBtn');
   const newProjectBtn = document.getElementById('newProjectBtn');
   const pipelineForm = document.getElementById('pipelineForm');
-  const pipelineSubmitBtn = pipelineForm?.querySelector('button[type="submit"]');
   const pipelineShaderSelect = document.getElementById('pipelineShaderSelect');
   const pipelinePanelTitle = document.getElementById('pipelinePanelTitle');
   const dispatchFields = document.getElementById('dispatchFields');
@@ -48,14 +201,46 @@ document.addEventListener('DOMContentLoaded', () => {
   const moveFunctionDownBtn = document.getElementById('moveFunctionDownBtn');
   const functionForm = document.getElementById('functionForm');
   const functionEditor = document.getElementById('functionEditor');
+  const functionGutter = document.getElementById('functionGutter');
   const functionLines = document.getElementById('functionLines');
+  const functionDiagnostics = document.getElementById('functionDiagnostics');
   const texturesEditor = document.getElementById('texturesEditor');
   const statLines = document.getElementById('statLines');
   const statChars = document.getElementById('statChars');
   const consoleArea = document.getElementById('consoleArea');
   const clearConsoleBtn = document.getElementById('clearConsoleBtn');
+  const consoleErrorBadge = document.getElementById('consoleErrorBadge');
   const stepLabel = document.getElementById('stepLabel');
+  const runSpeedSlider = document.getElementById('runSpeedSlider');
+  const runSpeedLabel = document.getElementById('runSpeedLabel');
+  const previewPanel = document.getElementById('previewPanel');
+  const previewFullscreenBtn = document.getElementById('previewFullscreenBtn');
+  const previewFullscreenControls = document.getElementById('previewFullscreenControls');
+  const fsCompileBtn = document.getElementById('fsCompileBtn');
+  const fsStepBtn = document.getElementById('fsStepBtn');
+  const fsRunBtn = document.getElementById('fsRunBtn');
+  const fsPauseBtn = document.getElementById('fsPauseBtn');
+  const fsStopBtn = document.getElementById('fsStopBtn');
+  const fsExitFullscreenBtn = document.getElementById('fsExitFullscreenBtn');
+  const fsStepLabel = document.getElementById('fsStepLabel');
+  const fsZSlice = document.getElementById('fsZSlice');
+  const fsSliceLabel = document.getElementById('fsSliceLabel');
+  const fsRunSpeedSlider = document.getElementById('fsRunSpeedSlider');
+  const fsRunSpeedLabel = document.getElementById('fsRunSpeedLabel');
   const previewValueLabel = document.getElementById('previewValueLabel');
+  const examplesBtn = document.getElementById('examplesBtn');
+  const examplesMenu = document.getElementById('examplesMenu');
+  const tutosBtn = document.getElementById('tutosBtn');
+  const tutosMenu = document.getElementById('tutosMenu');
+  const helpBtn = document.getElementById('helpBtn');
+  const helpModal = document.getElementById('helpModal');
+  const helpCloseBtn = document.getElementById('helpCloseBtn');
+  const helpResetZoomBtn = document.getElementById('helpResetZoomBtn');
+  const helpPrevBtn = document.getElementById('helpPrevBtn');
+  const helpNextBtn = document.getElementById('helpNextBtn');
+  const helpImageWrap = document.getElementById('helpImageWrap');
+  const helpMainImage = document.getElementById('helpMainImage');
+  const helpThumbs = document.getElementById('helpThumbs');
   const moveTextureUpBtn = document.getElementById('moveTextureUpBtn');
   const moveTextureDownBtn = document.getElementById('moveTextureDownBtn');
 
@@ -68,8 +253,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveBtn     = document.getElementById('saveBtn');
   const loadFileInput = document.getElementById('loadFileInput');
   const accountToggleBtn = document.getElementById('accountToggleBtn');
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  const languageSelect = document.getElementById('languageSelect');
+  const systemInfoBtn = document.getElementById('systemInfoBtn');
+  const systemInfoModal = document.getElementById('systemInfoModal');
+  const systemInfoCopyBtn = document.getElementById('systemInfoCopyBtn');
+  const systemInfoResize = document.getElementById('systemInfoResize');
   const accountPanel = document.getElementById('accountPanel');
-  const accountCloseBtn = document.getElementById('accountCloseBtn');
   const accountStatus = document.getElementById('accountStatus');
   const accountForms = document.getElementById('accountForms');
   const accountActions = document.getElementById('accountActions');
@@ -83,25 +273,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const logoutBtn = document.getElementById('logoutBtn');
   const deleteAccountBtn = document.getElementById('deleteAccountBtn');
   const googleSignInBtn = document.getElementById('googleSignInBtn');
-  const systemStatus = document.getElementById('systemStatus');
-  const systemGpuVendor = document.getElementById('systemGpuVendor');
-  const systemGpuDevice = document.getElementById('systemGpuDevice');
-  const systemGpuArchitecture = document.getElementById('systemGpuArchitecture');
-  const systemGpuDescription = document.getElementById('systemGpuDescription');
-  const systemGpuDriver = document.getElementById('systemGpuDriver');
-  const systemGpuDriverInfo = document.getElementById('systemGpuDriverInfo');
-  const systemGpuVram = document.getElementById('systemGpuVram');
-  const systemGpuCores = document.getElementById('systemGpuCores');
-  const systemGpuClock = document.getElementById('systemGpuClock');
-  const systemWorkgroupMax = document.getElementById('systemWorkgroupMax');
-  const systemLimits = document.getElementById('systemLimits');
-  const systemCoreFeatures = document.getElementById('systemCoreFeatures');
-  const systemFeatures = document.getElementById('systemFeatures');
-  const gpuPreference = document.getElementById('gpuPreference');
-  const languageSelect = document.getElementById('languageSelect');
 
-  let currentAdapter = null;
   let currentDevice = null;
+  let currentAdapter = null;
+  let currentAdapterInfo = null;
   let computePipelines = [];
   let bindingBuffers = new Map();
   let lastCompiledWGSL = '';
@@ -121,9 +296,21 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   let isCompiled = false;
+  let isCompiling = false;
   let isRunning = false;
   let isPaused = false;
   let timerId = null;
+  let runIntervalMs = 16;
+  let runUncapped = false;
+  let runRafId = 0;
+  let runSpeedMeasured = 0;
+  let runSpeedMeasureT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  let runSpeedMeasureSteps0 = 0;
+  let runSpeedTargetLabel = '60/s';
+  let runReadbackIntervalMs = 150;
+  let lastRunReadbackAt = 0;
+  let runUiIntervalMs = 150;
+  let lastRunUiUpdateAt = 0;
   updateButtons()
 
   let textures = [];
@@ -137,6 +324,16 @@ document.addEventListener('DOMContentLoaded', () => {
   let functionsStore = [];
   let selectedFunctionId = null;
   let consoleMessages = [];
+  let activeTabName = Array.from(tabs).find((t) => t.classList.contains('active'))?.dataset?.tab || 'textures';
+  let consoleHasUnreadErrors = false;
+  let lastWGSLMap = null;
+  let lastLiveWGSLMap = null;
+  let lastLiveWGSLMessages = [];
+  let shaderIdsWithErrors = new Set();
+  let functionIdsWithErrors = new Set();
+  let lintDevicePromise = null;
+  let diagnosticsTimer = null;
+  let lastLiveWGSLCode = '';
   let prep = null;
   let bindingsDirty = true; // force regen des bind groups/read buffers quand besoin
   let isSimulationRunning = false; // Empêche les appels concurrents à playSimulationStep
@@ -157,600 +354,125 @@ document.addEventListener('DOMContentLoaded', () => {
   let mouseZValue = 0;
   let keyValue = 0;
   let mouseBtnValue = 0;
-  let previewValueState = { x: 0, y: 0, value: null, valueType: null };
-
-  const translations = {
-    fr: {
-      'header.by': 'par Pascal BALLET',
-      'header.tagline': 'Apprendre et enseigner WebGPU facilement',
-      'header.version': 'Version 1.0',
-      'header.account': 'Mon compte',
-      'language.label': 'Langue',
-      'language.fr': 'Français',
-      'language.en': 'English',
-      'account.email': 'Email',
-      'account.password': 'Mot de passe',
-      'account.login': 'Se connecter',
-      'account.signup': 'Créer un compte',
-      'account.google': 'Se connecter avec Google',
-      'account.info': 'Mes informations',
-      'account.newsletter': "Recevoir la lettre d'information de WebGPU Studio",
-      'account.newsletterNote': '(email exclusivement pour la newsletter)',
-      'account.logout': 'Se déconnecter',
-      'account.delete': 'Supprimer mon compte',
-      'account.hide': 'Masquer',
-      'account.status.connected': 'Connecté : {email}',
-      'account.status.disconnected': 'Non connecté',
-      'account.userFallback': 'utilisateur',
-      'account.errors.firebaseMissing': 'Firebase SDK non chargé.',
-      'account.errors.firebaseConfigMissing': 'Firebase config manquante.',
-      'account.errors.credentialsRequired': 'Email et mot de passe requis.',
-      'account.confirm.delete': 'Confirmer la suppression définitive du compte ?',
-      'toolbar.new': 'Nouveau',
-      'toolbar.load': 'Charger',
-      'toolbar.save': 'Sauver',
-      'toolbar.compile': 'Compile',
-      'toolbar.step': 'Step',
-      'toolbar.run': 'Run',
-      'toolbar.pause': 'Pause',
-      'toolbar.stop': 'Stop',
-      'toolbar.stepLabel': 'step = {value}',
-      'tabs.buffers': 'Buffers',
-      'tabs.functions': 'Fonctions',
-      'tabs.shaders': 'Compute Shaders',
-      'tabs.pass': 'Pass',
-      'tabs.system': 'Système',
-      'tabs.console': 'Console',
-      'textures.title': 'Buffers',
-      'textures.add': '+ Ajouter',
-      'textures.preview': 'Visualisation 2D/3D',
-      'textures.mode2d': '2D',
-      'textures.mode3d': '3D',
-      'textures.selected': 'Buffer sélectionné',
-      'textures.sizeX': 'Taille X',
-      'textures.sizeY': 'Taille Y',
-      'textures.sizeZ': 'Taille Z',
-      'textures.type': 'Type',
-      'textures.type.int': 'Entier (i32)',
-      'textures.type.uint': 'Entier non signé (u32)',
-      'textures.type.float': 'Flottant (f32)',
-      'textures.fill': 'Valeurs initiales',
-      'textures.fill.empty': 'Matrice vide (zéro)',
-      'textures.fill.random': 'Remplissage aléatoire',
-      'textures.regen': 'Régénérer valeurs',
-      'textures.sliceLabel': 'Z = {value}',
-      'textures.emptyList': 'Aucune texture. Ajoutez-en une.',
-      'shaders.eyebrow': 'Web GPU Shader Language',
-      'shaders.wgsl': 'WGSL',
-      'shaders.add': '+ Ajouter',
-      'shaders.emptyList': 'Aucun compute shader. Ajoutez-en un.',
-      'pass.shadersTitle': 'Compute Shaders',
-      'pass.addPipeline': '+ Pipeline >>>',
-      'pass.orderEyebrow': "Ordre d'exécution des",
-      'pass.orderTitle': 'Pipelines',
-      'pass.moveUp': 'Avant ←',
-      'pass.moveDown': '→ Après',
-      'pass.loopStart': '+ Début boucle',
-      'pass.loopEnd': '+ Fin boucle',
-      'pipeline.selected': 'Pipeline sélectionnée',
-      'pipeline.name': 'Nom du pipe-line',
-      'pipeline.shader': 'Compute Shader associé',
-      'pipeline.repeats': 'Répétitions',
-      'pipeline.repeatsNote': 'Les pipelines jusqu’à la fin de boucle seront répétés.',
-      'pipeline.dispatch': 'dispatch Workgroups',
-      'pipeline.loopEndNote': 'Fin de boucle : aucune propriété à configurer.',
-      'pipeline.emptyList': 'Ajoutez un compute shader pour le pipeline.',
-      'pipeline.emptyTimeline': 'Aucun Pipeline dans la Pass.',
-      'pipeline.loopEndMeta': 'Fin boucle',
-      'pipeline.loopStartTitle': 'Début boucle sélectionné',
-      'pipeline.loopEndTitle': 'Fin boucle sélectionné',
-      'pipeline.pipelineTitle': 'Pipeline sélectionnée',
-      'pipeline.loopStartOption': 'Boucle (début)',
-      'pipeline.loopEndOption': 'Boucle (fin)',
-      'pipeline.noShaderOption': 'Aucun compute shader disponible',
-      'pipeline.shaderMissingLabel': 'Shader manquant',
-      'pipeline.loopStartName': 'Début boucle',
-      'pipeline.loopEndName': 'Fin boucle',
-      'pipeline.shaderLabel': 'Shader : {name}',
-      'pipeline.defaultName': 'Pipeline {index}',
-      'functions.title': 'Biblio-thèques',
-      'functions.add': '+ Ajouter',
-      'functions.code': 'Code',
-      'functions.wgsl': 'WGSL',
-      'functions.declarations': 'Déclaration des <b>Buffers</b> et des <b>uniform</b>',
-      'functions.selectedLibrary': 'Bibliothèque sélectionnée',
-      'functions.selectedFunction': 'Fonction sélectionnée',
-      'functions.lines': 'Lignes',
-      'functions.chars': 'Caractères',
-      'functions.emptyList': 'Aucune bibliothèque. Ajoutez-en une.',
-      'functions.defaultName': 'Bibliothèque {index}',
-      'console.title': 'Console',
-      'console.subtitle': 'Erreurs de compilation',
-      'console.clear': 'Effacer',
-      'console.empty': 'Aucune erreur pour le moment.',
-      'system.title': 'Système',
-      'system.subtitle': 'Carte graphique WebGPU',
-      'system.preference': 'Préférence GPU',
-      'system.preference.performance': 'Performance',
-      'system.preference.lowPower': 'Économie',
-      'system.features': 'Fonctionnalités',
-      'system.limits': 'Limites',
-      'system.coreFeatures': 'Core features',
-      'system.status.active': 'WebGPU actif',
-      'system.status.unsupported': 'WebGPU non supporté.',
-      'system.status.adapterUnavailable': 'Adaptateur WebGPU indisponible.',
-      'system.status.infoUnavailable': 'Infos GPU non accessibles via WebGPU.',
-      'system.status.initFailed': 'Échec initialisation WebGPU.',
-      'system.preferenceStatus': 'Préférence GPU : {value}',
-      'system.unavailable': 'Non disponible via WebGPU',
-      'preview.value': 'Val ({x},{y}) : {value}',
-      'preview.none': 'Valeurs : —',
-      'preview.noTexture': 'Aucune texture sélectionnée',
-      'preview.webgl2Required': 'WebGL2 requis pour l’aperçu 3D RGBA.',
-      'common.properties': 'Propriétés',
-      'common.delete': 'Supprimer',
-      'common.name': 'Nom',
-      'common.apply': 'Appliquer',
-      'common.duplicate': 'Dupliquer',
-      'common.line': 'ligne',
-      'common.lines': 'lignes',
-      'wgsl.missingParen': 'Une fonction semble manquer ses parenthèses : utilisez "fn nom()"',
-      'wgsl.unbalancedBraces': 'Accolades déséquilibrées dans le WGSL généré.',
-      'project.confirm.new': 'Créer un nouveau projet ? Les données non sauvegardées seront perdues.',
-      'log.compile.staticOk': 'Compilation statique : OK.',
-      'log.run.alreadyRunning': 'Exécution déjà en cours.',
-      'log.run.started': 'Boucle run démarrée.',
-      'log.pause.none': 'Rien à mettre en pause (pas de run en cours).',
-      'log.pause.already': 'Déjà en pause. Cliquez sur Run pour reprendre.',
-      'log.pause.paused': 'Exécution en pause. Cliquez sur Run pour reprendre.',
-      'log.stop.reset': 'État GPU réinitialisé. Recompilez pour repartir de zéro.',
-      'log.save.ok': 'Projet sauvegardé.',
-      'log.load.ok': 'Projet chargé : {file}',
-      'log.load.failed': 'Échec chargement : {error}',
-      'log.project.new': 'Nouveau projet créé.',
-      'log.run.noDevice': 'Aucun device WebGPU initialisé. Compile d’abord.',
-      'log.run.noPipeline': 'Aucun pipeline compute disponible. Compile d’abord.',
-      'log.run.noResources': 'Aucune ressource à binder. Vérifiez le WGSL.',
-      'log.run.invalidLoop': 'Structure de boucle invalide : vérifiez vos Début/Fin.',
-      'log.run.pipelineMissing': 'Pipeline {index} : pipeline introuvable.',
-      'log.run.layoutMissing': 'Pipeline {index} : layout introuvable pour le pipeline.',
-      'log.run.bufferReadFailed': 'Lecture buffer échouée : {error}',
-      'log.pipeline.invalidStart': 'Boucle invalide (Début sans Fin).',
-      'log.pipeline.invalidEnd': 'Boucle invalide (Fin sans Début ou intercalée).',
-      'log.compile.webgpuUnsupported': 'WebGPU non supporté dans ce navigateur.',
-      'log.compile.adapterMissing': 'Impossible d’obtenir un adaptateur WebGPU.',
-      'log.compile.wgslError': 'Erreur WGSL : {message} (L{line} C{column})',
-      'log.compile.wgslWarning': 'Avertissement WGSL : {message} (L{line} C{column})',
-      'log.compile.webgpuOk': 'Compilation WGSL WebGPU : OK.',
-      'log.compile.failed': 'Échec compilation WebGPU : {error}',
-      'log.pipeline.none': 'Aucun pipeline défini : module compilé sans pipeline.',
-      'log.pipeline.invalidLoop': 'Structure de boucle invalide : vérifiez vos Début/Fin.',
-      'log.pipeline.layoutFailed': 'Impossible de créer le layout commun : {error}',
-      'log.pipeline.shaderMissing': 'Pipeline {index} : shader manquant.',
-      'log.pipeline.created': 'Pipeline {index} créé pour {shader}.',
-      'log.pipeline.createFailed': 'Échec création pipeline pour {shader} : {error}',
-    },
-    en: {
-      'header.by': 'by Pascal BALLET',
-      'header.tagline': 'Learn and teach WebGPU easily',
-      'header.version': 'Version 1.0',
-      'header.account': 'My account',
-      'language.label': 'Language',
-      'language.fr': 'French',
-      'language.en': 'English',
-      'account.email': 'Email',
-      'account.password': 'Password',
-      'account.login': 'Sign in',
-      'account.signup': 'Create account',
-      'account.google': 'Sign in with Google',
-      'account.info': 'My details',
-      'account.newsletter': 'Receive the WebGPU Studio newsletter',
-      'account.newsletterNote': '(email only used for the newsletter)',
-      'account.logout': 'Sign out',
-      'account.delete': 'Delete my account',
-      'account.hide': 'Hide',
-      'account.status.connected': 'Signed in: {email}',
-      'account.status.disconnected': 'Not signed in',
-      'account.userFallback': 'user',
-      'account.errors.firebaseMissing': 'Firebase SDK not loaded.',
-      'account.errors.firebaseConfigMissing': 'Missing Firebase config.',
-      'account.errors.credentialsRequired': 'Email and password required.',
-      'account.confirm.delete': 'Confirm account deletion?',
-      'toolbar.new': 'New',
-      'toolbar.load': 'Load',
-      'toolbar.save': 'Save',
-      'toolbar.compile': 'Compile',
-      'toolbar.step': 'Step',
-      'toolbar.run': 'Run',
-      'toolbar.pause': 'Pause',
-      'toolbar.stop': 'Stop',
-      'toolbar.stepLabel': 'step = {value}',
-      'tabs.buffers': 'Buffers',
-      'tabs.functions': 'Functions',
-      'tabs.shaders': 'Compute Shaders',
-      'tabs.pass': 'Pass',
-      'tabs.system': 'System',
-      'tabs.console': 'Console',
-      'textures.title': 'Buffers',
-      'textures.add': '+ Add',
-      'textures.preview': '2D/3D Preview',
-      'textures.mode2d': '2D',
-      'textures.mode3d': '3D',
-      'textures.selected': 'Selected buffer',
-      'textures.sizeX': 'Size X',
-      'textures.sizeY': 'Size Y',
-      'textures.sizeZ': 'Size Z',
-      'textures.type': 'Type',
-      'textures.type.int': 'Integer (i32)',
-      'textures.type.uint': 'Unsigned integer (u32)',
-      'textures.type.float': 'Float (f32)',
-      'textures.fill': 'Initial values',
-      'textures.fill.empty': 'Empty matrix (zero)',
-      'textures.fill.random': 'Random fill',
-      'textures.regen': 'Regenerate values',
-      'textures.sliceLabel': 'Z = {value}',
-      'textures.emptyList': 'No buffer. Add one.',
-      'shaders.eyebrow': 'Web GPU Shader Language',
-      'shaders.wgsl': 'WGSL',
-      'shaders.add': '+ Add',
-      'shaders.emptyList': 'No compute shader. Add one.',
-      'pass.shadersTitle': 'Compute Shaders',
-      'pass.addPipeline': '+ Pipeline >>>',
-      'pass.orderEyebrow': 'Execution order of',
-      'pass.orderTitle': 'Pipelines',
-      'pass.moveUp': 'Up ←',
-      'pass.moveDown': '→ Down',
-      'pass.loopStart': '+ Loop start',
-      'pass.loopEnd': '+ Loop end',
-      'pipeline.selected': 'Selected pipeline',
-      'pipeline.name': 'Pipeline name',
-      'pipeline.shader': 'Linked compute shader',
-      'pipeline.repeats': 'Repeats',
-      'pipeline.repeatsNote': 'Pipelines up to the loop end will be repeated.',
-      'pipeline.dispatch': 'Dispatch workgroups',
-      'pipeline.loopEndNote': 'Loop end: no properties to configure.',
-      'pipeline.emptyList': 'Add a compute shader for the pipeline.',
-      'pipeline.emptyTimeline': 'No pipeline in the pass.',
-      'pipeline.loopEndMeta': 'Loop end',
-      'pipeline.loopStartTitle': 'Loop start selected',
-      'pipeline.loopEndTitle': 'Loop end selected',
-      'pipeline.pipelineTitle': 'Selected pipeline',
-      'pipeline.loopStartOption': 'Loop (start)',
-      'pipeline.loopEndOption': 'Loop (end)',
-      'pipeline.noShaderOption': 'No compute shader available',
-      'pipeline.shaderMissingLabel': 'Shader missing',
-      'pipeline.loopStartName': 'Loop start',
-      'pipeline.loopEndName': 'Loop end',
-      'pipeline.shaderLabel': 'Shader: {name}',
-      'pipeline.defaultName': 'Pipeline {index}',
-      'functions.title': 'Libraries',
-      'functions.add': '+ Add',
-      'functions.code': 'Code',
-      'functions.wgsl': 'WGSL',
-      'functions.declarations': 'Declaration of <b>Buffers</b> and <b>uniforms</b>',
-      'functions.selectedLibrary': 'Selected library',
-      'functions.selectedFunction': 'Selected function',
-      'functions.lines': 'Lines',
-      'functions.chars': 'Characters',
-      'functions.emptyList': 'No library. Add one.',
-      'functions.defaultName': 'Library {index}',
-      'console.title': 'Console',
-      'console.subtitle': 'Compilation errors',
-      'console.clear': 'Clear',
-      'console.empty': 'No errors so far.',
-      'system.title': 'System',
-      'system.subtitle': 'WebGPU graphics card',
-      'system.preference': 'GPU preference',
-      'system.preference.performance': 'Performance',
-      'system.preference.lowPower': 'Power saving',
-      'system.features': 'Features',
-      'system.limits': 'Limits',
-      'system.coreFeatures': 'Core features',
-      'system.status.active': 'WebGPU active',
-      'system.status.unsupported': 'WebGPU not supported.',
-      'system.status.adapterUnavailable': 'WebGPU adapter unavailable.',
-      'system.status.infoUnavailable': 'GPU info not accessible via WebGPU.',
-      'system.status.initFailed': 'WebGPU initialization failed.',
-      'system.preferenceStatus': 'GPU preference: {value}',
-      'system.unavailable': 'Unavailable via WebGPU',
-      'preview.value': 'Value ({x},{y}): {value}',
-      'preview.none': 'Values: —',
-      'preview.noTexture': 'No buffer selected',
-      'preview.webgl2Required': 'WebGL2 required for the 3D RGBA preview.',
-      'common.properties': 'Properties',
-      'common.delete': 'Delete',
-      'common.name': 'Name',
-      'common.apply': 'Apply',
-      'common.duplicate': 'Duplicate',
-      'common.line': 'line',
-      'common.lines': 'lines',
-      'wgsl.missingParen': 'A function seems to be missing parentheses: use "fn name()"',
-      'wgsl.unbalancedBraces': 'Unbalanced braces in generated WGSL.',
-      'project.confirm.new': 'Create a new project? Unsaved data will be lost.',
-      'log.compile.staticOk': 'Static compilation: OK.',
-      'log.run.alreadyRunning': 'Execution already running.',
-      'log.run.started': 'Run loop started.',
-      'log.pause.none': 'Nothing to pause (no run in progress).',
-      'log.pause.already': 'Already paused. Click Run to resume.',
-      'log.pause.paused': 'Execution paused. Click Run to resume.',
-      'log.stop.reset': 'GPU state reset. Recompile to start over.',
-      'log.save.ok': 'Project saved.',
-      'log.load.ok': 'Project loaded: {file}',
-      'log.load.failed': 'Load failed: {error}',
-      'log.project.new': 'New project created.',
-      'log.run.noDevice': 'No WebGPU device initialized. Compile first.',
-      'log.run.noPipeline': 'No compute pipeline available. Compile first.',
-      'log.run.noResources': 'No resources to bind. Check WGSL.',
-      'log.run.invalidLoop': 'Invalid loop structure: check your Start/End.',
-      'log.run.pipelineMissing': 'Pipeline {index}: pipeline not found.',
-      'log.run.layoutMissing': 'Pipeline {index}: layout not found for pipeline.',
-      'log.run.bufferReadFailed': 'Buffer read failed: {error}',
-      'log.pipeline.invalidStart': 'Invalid loop (Start without End).',
-      'log.pipeline.invalidEnd': 'Invalid loop (End without Start or interleaved).',
-      'log.compile.webgpuUnsupported': 'WebGPU not supported in this browser.',
-      'log.compile.adapterMissing': 'Failed to get a WebGPU adapter.',
-      'log.compile.wgslError': 'WGSL error: {message} (L{line} C{column})',
-      'log.compile.wgslWarning': 'WGSL warning: {message} (L{line} C{column})',
-      'log.compile.webgpuOk': 'WGSL WebGPU compilation: OK.',
-      'log.compile.failed': 'WebGPU compilation failed: {error}',
-      'log.pipeline.none': 'No pipeline defined: module compiled without pipeline.',
-      'log.pipeline.invalidLoop': 'Invalid loop structure: check your Start/End.',
-      'log.pipeline.layoutFailed': 'Failed to create shared layout: {error}',
-      'log.pipeline.shaderMissing': 'Pipeline {index}: shader missing.',
-      'log.pipeline.created': 'Pipeline {index} created for {shader}.',
-      'log.pipeline.createFailed': 'Pipeline creation failed for {shader}: {error}',
-    },
-  };
-
-  let currentLang = 'fr';
-
-  function t(key, vars = {}) {
-    const dict = translations[currentLang] || translations.fr;
-    let text = dict[key] || translations.fr[key] || key;
-    Object.keys(vars).forEach((varKey) => {
-      text = text.replace(new RegExp(`\\{${varKey}\\}`, 'g'), vars[varKey]);
-    });
-    return text;
-  }
-
-  function formatLineCount(lines) {
-    const label = lines === 1 ? t('common.line') : t('common.lines');
-    return `${lines} ${label}`;
-  }
-
-  function setLabelText(label, value) {
-    if (!label) return;
-    const textNode = Array.from(label.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
-    if (textNode) {
-      textNode.nodeValue = `${value} `;
-    } else {
-      label.insertBefore(document.createTextNode(`${value} `), label.firstChild);
-    }
-  }
-
-  function applyTranslations(root = document) {
-    root.querySelectorAll('[data-i18n]').forEach((el) => {
-      const value = t(el.dataset.i18n);
-      if (el.tagName === 'LABEL') {
-        setLabelText(el, value);
-      } else {
-        el.textContent = value;
-      }
-    });
-    root.querySelectorAll('[data-i18n-html]').forEach((el) => {
-      const value = t(el.dataset.i18nHtml);
-      el.innerHTML = value;
-    });
-  }
-
-  function getGpuPreferenceLabel() {
-    if (!gpuPreference) return '';
-    return gpuPreference.options[gpuPreference.selectedIndex]?.textContent || '';
-  }
-
-  function setLanguage(lang) {
-    currentLang = translations[lang] ? lang : 'fr';
-    if (languageSelect) languageSelect.value = currentLang;
-    document.documentElement.lang = currentLang;
-    localStorage.setItem('webgpustudio.lang', currentLang);
-    applyTranslations();
-    refreshDynamicText();
-  }
-
-  function refreshDynamicText() {
-    renderStepCounter();
-    setPreviewValue(
-      previewValueState.x,
-      previewValueState.y,
-      previewValueState.value,
-      previewValueState.valueType,
-    );
-    renderTextureList();
-    renderShaderList();
-    renderFunctionList();
-    renderPipelineViews();
-    renderConsole();
-    renderPreview();
-    updateShaderLines(shaderEditor?.value || '');
-    updateFunctionStats(functionEditor?.value || '');
-    setSliceLabel(zSlice?.value || 0);
-    if (currentAdapter || currentDevice) {
-      updateSystemInfo(currentAdapter, currentDevice);
-    } else {
-      updateSystemInfo(null, null, t('system.status.adapterUnavailable'));
-    }
-    setAccountState(firebaseAuth?.currentUser || null);
-  }
 
   function setPreviewValue(x,y,val,valType = null) {
     previewValueCurrent = val;
-    previewValueState = { x, y, value: val, valueType: valType };
     if (!previewValueLabel) return;
-    const displayVal = (valType === 'uint' && typeof val === 'number') ? (val >>> 0) : val;
-    if (displayVal === null || displayVal === undefined) {
-      previewValueLabel.textContent = t('preview.none');
+    if (val === null || val === undefined) {
+      previewValueLabel.textContent = t('toolbar.values_empty', null, 'Valeurs : —');
       return;
     }
+    const displayVal = (valType === 'uint' && typeof val === 'number') ? (val >>> 0) : val;
     const text = displayVal;
-    previewValueLabel.textContent = t('preview.value', { x, y, value: text });
+    previewValueLabel.textContent = t('toolbar.value_at', { x, y, value: text }, `Val (${x},${y}) : ${text}`);
   }
 
   function renderStepCounter() {
     if (!stepLabel) return;
-    stepLabel.textContent = t('toolbar.stepLabel', { value: simulationSteps });
-  }
-  function setSliceLabel(value) {
-    if (!sliceLabel) return;
-    sliceLabel.textContent = t('textures.sliceLabel', { value });
+    const label = t('toolbar.step_counter', { count: simulationSteps }, `step = ${simulationSteps}`);
+    stepLabel.textContent = label;
+    if (fsStepLabel) fsStepLabel.textContent = label;
   }
   renderStepCounter();
 
-  let gpuPowerPreference = 'high-performance';
-  if (gpuPreference) {
-    gpuPowerPreference = gpuPreference.value || gpuPowerPreference;
-    gpuPreference.addEventListener('change', () => {
-      gpuPowerPreference = gpuPreference.value || 'high-performance';
-      setSystemField(systemStatus, t('system.preferenceStatus', { value: getGpuPreferenceLabel() || gpuPowerPreference }));
-    });
+  function setRunSpeed(stepsPerSec) {
+    const sliderMax = Number(runSpeedSlider?.max || fsRunSpeedSlider?.max || 240);
+    const raw = Number(stepsPerSec) || 60;
+    const isMax = raw >= sliderMax;
+    runUncapped = Boolean(isMax);
+    const s = runUncapped
+      ? sliderMax
+      : Math.max(1, Math.min(Math.max(1, sliderMax - 1), raw));
+    runIntervalMs = runUncapped ? 0 : Math.max(1, Math.round(1000 / s));
+    if (runUncapped) {
+      runSpeedMeasureT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      runSpeedMeasureSteps0 = simulationSteps;
+      runSpeedMeasured = 0;
+    }
+    runSpeedTargetLabel = runUncapped ? 'MAX' : `${s}/s`;
+    const label = `${runSpeedTargetLabel} (${Math.round(runSpeedMeasured)}/s)`;
+    if (runSpeedLabel) runSpeedLabel.textContent = label;
+    if (runSpeedSlider) runSpeedSlider.value = String(s);
+    if (fsRunSpeedLabel) fsRunSpeedLabel.textContent = label;
+    if (fsRunSpeedSlider) fsRunSpeedSlider.value = String(s);
+    try {
+      localStorage.setItem('wgstudio.runSpeed', String(s));
+    } catch (e) {
+    }
+    if (isRunning && !isPaused) {
+      stopTimer();
+      startTimer();
+    }
   }
 
-  if (languageSelect) {
-    languageSelect.addEventListener('change', () => setLanguage(languageSelect.value));
-  }
-  const storedLang = localStorage.getItem('webgpustudio.lang');
-  const browserLang = (navigator.language || '').toLowerCase();
-  const initialLang = storedLang || (browserLang.startsWith('en') ? 'en' : 'fr');
-  setLanguage(initialLang);
-
-  function setSystemField(el, value) {
-    if (!el) return;
-    el.textContent = value || '—';
+  function updateMeasuredRunSpeedLabel() {
+    if (runUncapped) {
+      const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      if ((now - lastRunUiUpdateAt) < runUiIntervalMs) return;
+      lastRunUiUpdateAt = now;
+    }
+    const label = `${runSpeedTargetLabel} (${Math.round(runSpeedMeasured)}/s)`;
+    if (runSpeedLabel) runSpeedLabel.textContent = label;
+    if (fsRunSpeedLabel) fsRunSpeedLabel.textContent = label;
   }
 
-  function renderSystemList(el, entries) {
-    if (!el) return;
-    if (!entries || !entries.length) {
-      el.textContent = '—';
+  function resetRunSpeedMeasure() {
+    runSpeedMeasureT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    runSpeedMeasureSteps0 = simulationSteps;
+    lastRunUiUpdateAt = 0;
+  }
+
+  function scheduleNextUncappedStep() {
+    if (!runUncapped || !isRunning || isPaused) return;
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => {
+        if (!runUncapped || !isRunning || isPaused) return;
+        if (!isSimulationRunning) playSimulationStep();
+      });
       return;
     }
-    el.innerHTML = entries.map((item) => `<div>${item}</div>`).join('');
+    setTimeout(() => {
+      if (!runUncapped || !isRunning || isPaused) return;
+      if (!isSimulationRunning) playSimulationStep();
+    }, 0);
   }
 
-  async function updateSystemInfo(adapter, device, statusText = '') {
-    setSystemField(systemStatus, statusText || t('system.status.active'));
-    if (!adapter || !device) {
-      setSystemField(systemGpuVendor, '—');
-      setSystemField(systemGpuDevice, '—');
-      setSystemField(systemGpuArchitecture, '—');
-      setSystemField(systemGpuDescription, '—');
-      setSystemField(systemGpuDriver, '—');
-      setSystemField(systemGpuDriverInfo, '—');
-      setSystemField(systemGpuVram, '—');
-      setSystemField(systemGpuCores, '—');
-      setSystemField(systemGpuClock, '—');
-      setSystemField(systemWorkgroupMax, '—');
-      renderSystemList(systemLimits, []);
-      renderSystemList(systemCoreFeatures, []);
-      renderSystemList(systemFeatures, []);
-      return;
-    }
-
-    let info = null;
-    if (typeof adapter.requestAdapterInfo === 'function') {
-      try {
-        info = await adapter.requestAdapterInfo();
-      } catch (err) {
-        info = null;
+  function noteStepCompleted() {
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const dt = Math.max(1, now - runSpeedMeasureT0);
+    const ds = simulationSteps - runSpeedMeasureSteps0;
+    if (ds > 0) {
+      runSpeedMeasured = (ds * 1000) / dt;
+      updateMeasuredRunSpeedLabel();
+      if (dt >= 250) {
+        runSpeedMeasureT0 = now;
+        runSpeedMeasureSteps0 = simulationSteps;
       }
     }
-    if (!info) {
-      setSystemField(systemStatus, t('system.status.infoUnavailable'));
-    }
-
-    setSystemField(systemGpuVendor, info?.vendor || t('system.unavailable'));
-    setSystemField(systemGpuDevice, info?.device || t('system.unavailable'));
-    setSystemField(systemGpuArchitecture, info?.architecture || t('system.unavailable'));
-    setSystemField(systemGpuDescription, info?.description || t('system.unavailable'));
-    setSystemField(systemGpuDriver, info?.driver || t('system.unavailable'));
-    setSystemField(systemGpuDriverInfo, info?.driverInfo || t('system.unavailable'));
-    setSystemField(systemGpuVram, t('system.unavailable'));
-    setSystemField(systemGpuCores, t('system.unavailable'));
-    setSystemField(systemGpuClock, t('system.unavailable'));
-
-    const maxX = device.limits?.maxComputeWorkgroupSizeX;
-    const maxY = device.limits?.maxComputeWorkgroupSizeY;
-    const maxZ = device.limits?.maxComputeWorkgroupSizeZ;
-    if (typeof maxX === 'number' && typeof maxY === 'number' && typeof maxZ === 'number') {
-      setSystemField(systemWorkgroupMax, `${maxX} x ${maxY} x ${maxZ}`);
-    } else {
-      setSystemField(systemWorkgroupMax, '—');
-    }
-
-    const limits = [];
-    if (device.limits) {
-      const keys = Object.keys(device.limits);
-      const fallbackKeys = [
-        'maxBindGroups',
-        'maxBindingsPerBindGroup',
-        'maxBufferSize',
-        'maxComputeInvocationsPerWorkgroup',
-        'maxComputeWorkgroupSizeX',
-        'maxComputeWorkgroupSizeY',
-        'maxComputeWorkgroupSizeZ',
-        'maxComputeWorkgroupsPerDimension',
-        'maxDynamicStorageBuffersPerPipelineLayout',
-        'maxDynamicUniformBuffersPerPipelineLayout',
-        'maxSampledTexturesPerShaderStage',
-        'maxSamplersPerShaderStage',
-        'maxStorageBuffersPerShaderStage',
-        'maxStorageTexturesPerShaderStage',
-        'maxTextureArrayLayers',
-        'maxTextureDimension1D',
-        'maxTextureDimension2D',
-        'maxTextureDimension3D',
-        'maxUniformBufferBindingSize',
-        'maxUniformBuffersPerShaderStage',
-      ];
-      const list = keys.length ? keys : fallbackKeys;
-      list.forEach((key) => {
-        const value = device.limits[key];
-        if (typeof value !== 'function' && value !== undefined) {
-          limits.push(`${key}: ${value}`);
-        }
-      });
-    }
-    const features = device.features
-      ? Array.from(device.features).sort().map((f) => `• ${f}`)
-      : [];
-    const coreFeatures = adapter?.features
-      ? Array.from(adapter.features).sort().map((f) => `• ${f}`)
-      : [];
-    renderSystemList(systemLimits, limits);
-    renderSystemList(systemCoreFeatures, coreFeatures);
-    renderSystemList(systemFeatures, features);
   }
 
-  async function initSystemInfoOnLoad() {
-    if (!navigator.gpu) {
-      updateSystemInfo(null, null, t('system.status.unsupported'));
-      return;
+  function setPreviewFullscreen(enabled) {
+    if (!previewPanel) return;
+    previewPanel.classList.toggle('fullscreen', Boolean(enabled));
+    if (previewFullscreenControls) previewFullscreenControls.classList.toggle('hidden', !enabled);
+    try {
+      const appRoot = document.querySelector('main.app');
+      if (appRoot) appRoot.classList.toggle('preview-maximized', Boolean(enabled));
+    } catch (e) {
     }
     try {
-      const adapter = await navigator.gpu.requestAdapter({
-        powerPreference: gpuPowerPreference,
-      });
-      if (!adapter) {
-        updateSystemInfo(null, null, t('system.status.adapterUnavailable'));
-        return;
-      }
-      const device = await adapter.requestDevice();
-      currentAdapter = adapter;
-      currentAdapter = adapter;
-      currentDevice = device;
-      await updateSystemInfo(adapter, device);
-    } catch (err) {
-      updateSystemInfo(null, null, t('system.status.initFailed'));
+      document.documentElement.classList.toggle('preview-overlay', Boolean(enabled));
+    } catch (e) {
     }
+    try {
+      updateButtons();
+    } catch (e) {
+    }
+    try {
+      syncPreviewModeToggles();
+    } catch (e) {
+    }
+    schedulePreviewResize();
   }
 
   function enableTabIndent(editor) {
@@ -772,11 +494,1470 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const closeExamplesMenu = () => {
+    if (!examplesMenu) return;
+    examplesMenu.classList.add('hidden');
+  };
+
+  const openExamplesMenu = async () => {
+    if (!examplesMenu) return;
+    examplesMenu.classList.remove('hidden');
+    if (examplesMenu.dataset.loaded === '1') return;
+
+    let exampleFiles = [];
+    try {
+      const res = await fetch('examples/manifest.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (Array.isArray(json)) exampleFiles = json;
+      else if (Array.isArray(json?.examples)) exampleFiles = json.examples;
+    } catch (e) {
+      logConsole(`Impossible de charger examples/manifest.json : ${e.message || e}`, 'load');
+    }
+
+    examplesMenu.innerHTML = '';
+    if (!exampleFiles.length) {
+      const empty = document.createElement('div');
+      empty.className = 'eyebrow';
+      empty.style.padding = '10px 12px';
+      empty.textContent = '—';
+      examplesMenu.appendChild(empty);
+      examplesMenu.dataset.loaded = '1';
+      return;
+    }
+
+    exampleFiles.forEach((fileName) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'examples-item';
+      btn.textContent = String(fileName).replace(/\.wgstudio$/i, '');
+      btn.addEventListener('click', async () => {
+        try {
+          closeExamplesMenu();
+          const res = await fetch(`examples/${encodeURIComponent(fileName)}`, { cache: 'no-cache' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          loadProject(data);
+          logConsole(`Exemple chargé : ${fileName}`, 'load');
+        } catch (err) {
+          logConsole(`Échec chargement exemple : ${err.message || err}`, 'load');
+        }
+      });
+      examplesMenu.appendChild(btn);
+    });
+
+    examplesMenu.dataset.loaded = '1';
+  };
+
+  if (examplesBtn && examplesMenu) {
+    examplesBtn.addEventListener('click', async () => {
+      if (!examplesMenu.classList.contains('hidden')) {
+        closeExamplesMenu();
+        return;
+      }
+      if (tutosMenu) tutosMenu.classList.add('hidden');
+      await openExamplesMenu();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (examplesMenu.classList.contains('hidden')) return;
+      const target = e.target;
+      if (target === examplesBtn) return;
+      if (examplesMenu.contains(target)) return;
+      closeExamplesMenu();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeExamplesMenu();
+    });
+  }
+
+  const closeTutosMenu = () => {
+    if (!tutosMenu) return;
+    tutosMenu.classList.add('hidden');
+    try {
+      localStorage.setItem('wgstudio.mission.menuOpen', '0');
+    } catch (e) {
+    }
+  };
+
+  const loadMissionChecklist = (lang) => {
+    try {
+      const raw = localStorage.getItem(`wgstudio.mission.checklist.${lang}`);
+      const json = raw ? JSON.parse(raw) : null;
+      return (json && typeof json === 'object') ? json : {};
+    } catch (e) {
+      return {};
+    }
+  };
+
+  const saveMissionChecklist = (lang, data) => {
+    try {
+      localStorage.setItem(`wgstudio.mission.checklist.${lang}`, JSON.stringify(data || {}));
+    } catch (e) {
+    }
+  };
+
+  const openTutosMenu = async () => {
+    if (!tutosMenu) return;
+    tutosMenu.classList.remove('hidden');
+    try {
+      localStorage.setItem('wgstudio.mission.menuOpen', '1');
+    } catch (e) {
+    }
+
+    const lang = (window.i18next && window.i18next.isInitialized && window.i18next.language)
+      ? window.i18next.language
+      : (getStoredLanguage() || 'fr');
+    const safeLang = (lang === 'en') ? 'en' : 'fr';
+
+    if (tutosMenu.dataset.loaded === '1' && tutosMenu.dataset.lang === safeLang) return;
+    tutosMenu.dataset.lang = safeLang;
+
+    let pdfFiles = [];
+    try {
+      const agentRes = await fetch(`${agentBaseUrl}/tutos?lang=${encodeURIComponent(safeLang)}`, { cache: 'no-cache' });
+      if (agentRes.ok) {
+        const json = await agentRes.json();
+        if (Array.isArray(json?.pdfs)) pdfFiles = json.pdfs;
+      } else {
+        throw new Error(`HTTP ${agentRes.status}`);
+      }
+    } catch (e) {
+      try {
+        const res = await fetch(`Tutos/${encodeURIComponent(safeLang)}/manifest.json`, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (Array.isArray(json)) pdfFiles = json;
+        else if (Array.isArray(json?.pdfs)) pdfFiles = json.pdfs;
+      } catch (err) {
+        logConsole(`Impossible de charger la liste des tutos : ${err.message || err}`, 'load');
+      }
+    }
+
+    tutosMenu.innerHTML = '';
+    if (!pdfFiles.length) {
+      const empty = document.createElement('div');
+      empty.className = 'eyebrow';
+      empty.style.padding = '10px 12px';
+      empty.textContent = '—';
+      tutosMenu.appendChild(empty);
+      tutosMenu.dataset.loaded = '1';
+      return;
+    }
+
+    const checklist = loadMissionChecklist(safeLang);
+    let lastMission = null;
+    try {
+      lastMission = localStorage.getItem(`wgstudio.mission.last.${safeLang}`);
+    } catch (e) {
+      lastMission = null;
+    }
+
+    pdfFiles.forEach((fileName) => {
+      const row = document.createElement('div');
+      row.className = 'mission-item';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'mission-check';
+      cb.checked = Boolean(checklist[fileName]);
+      cb.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+      cb.addEventListener('change', () => {
+        checklist[fileName] = Boolean(cb.checked);
+        saveMissionChecklist(safeLang, checklist);
+      });
+
+      const link = document.createElement('a');
+      link.className = 'examples-item';
+      link.href = `Tutos/${encodeURIComponent(safeLang)}/${encodeURIComponent(fileName)}`;
+      link.download = '';
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = String(fileName);
+      if (lastMission && String(lastMission) === String(fileName)) {
+        try {
+          link.style.borderColor = 'rgba(124, 247, 196, 0.45)';
+        } catch (e) {
+        }
+      }
+      link.addEventListener('click', () => {
+        try {
+          localStorage.setItem(`wgstudio.mission.last.${safeLang}`, String(fileName));
+        } catch (e) {
+        }
+        closeTutosMenu();
+      });
+
+      row.appendChild(cb);
+      row.appendChild(link);
+      tutosMenu.appendChild(row);
+    });
+
+    tutosMenu.dataset.loaded = '1';
+  };
+
+  if (tutosBtn && tutosMenu) {
+    tutosBtn.addEventListener('click', async () => {
+      if (!tutosMenu.classList.contains('hidden')) {
+        closeTutosMenu();
+        return;
+      }
+      closeExamplesMenu();
+      await openTutosMenu();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (tutosMenu.classList.contains('hidden')) return;
+      const target = e.target;
+      if (target === tutosBtn) return;
+      if (tutosMenu.contains(target)) return;
+      closeTutosMenu();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeTutosMenu();
+    });
+  }
+
+  try {
+    if (tutosMenu && localStorage.getItem('wgstudio.mission.menuOpen') === '1') {
+      openTutosMenu();
+    }
+  } catch (e) {
+  }
+
+  const helpState = {
+    images: [],
+    lang: null,
+    index: 0,
+    zoom: 1,
+    panX: 0,
+    panY: 0,
+    isDragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    dragStartPanX: 0,
+    dragStartPanY: 0,
+  };
+
+  const getSafeLang = () => {
+    const lang = (window.i18next && window.i18next.isInitialized && window.i18next.language)
+      ? window.i18next.language
+      : (getStoredLanguage() || 'fr');
+    return (lang === 'en') ? 'en' : 'fr';
+  };
+
+  const closeHelpModal = () => {
+    if (!helpModal) return;
+    helpModal.classList.add('hidden');
+  };
+
+  const applyHelpTransform = () => {
+    if (!helpMainImage) return;
+    const z = Math.max(1, Math.min(6, helpState.zoom || 1));
+    helpState.zoom = z;
+    const x = Number.isFinite(helpState.panX) ? helpState.panX : 0;
+    const y = Number.isFinite(helpState.panY) ? helpState.panY : 0;
+    helpMainImage.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
+    if (helpImageWrap) {
+      try {
+        helpImageWrap.classList.toggle('is-zoomed', z > 1);
+      } catch (e) {
+      }
+    }
+  };
+
+  const resetHelpZoom = () => {
+    helpState.zoom = 1;
+    helpState.panX = 0;
+    helpState.panY = 0;
+    applyHelpTransform();
+  };
+
+  const setHelpIndex = (nextIndex) => {
+    if (!helpState.images.length) return;
+    const max = helpState.images.length;
+    const idx = ((nextIndex % max) + max) % max;
+    helpState.index = idx;
+    if (helpMainImage) {
+      helpMainImage.src = helpState.images[idx];
+    }
+    resetHelpZoom();
+    if (helpThumbs) {
+      Array.from(helpThumbs.querySelectorAll('.help-thumb')).forEach((el, i) => {
+        try {
+          el.classList.toggle('active', i === idx);
+        } catch (e) {
+        }
+      });
+    }
+  };
+
+  const renderHelpThumbs = () => {
+    if (!helpThumbs) return;
+    helpThumbs.innerHTML = '';
+    helpState.images.forEach((src, i) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'help-thumb';
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = '';
+      thumb.appendChild(img);
+      thumb.addEventListener('click', () => setHelpIndex(i));
+      helpThumbs.appendChild(thumb);
+    });
+  };
+
+  const renderHelpEmpty = () => {
+    if (helpMainImage) {
+      helpMainImage.removeAttribute('src');
+    }
+    if (helpThumbs) {
+      helpThumbs.innerHTML = '';
+      const empty = document.createElement('div');
+      empty.className = 'eyebrow';
+      empty.style.padding = '10px 12px';
+      empty.textContent = '—';
+      helpThumbs.appendChild(empty);
+    }
+  };
+
+  const fetchHelpManifest = async (lang) => {
+    const res = await fetch(`Aide/${encodeURIComponent(lang)}/manifest.json`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  };
+
+  const loadHelpImages = async () => {
+    const safeLang = getSafeLang();
+    if (helpState.lang === safeLang && helpState.images.length) return;
+
+    const normalize = (lang, json) => {
+      const list = Array.isArray(json) ? json : (Array.isArray(json?.images) ? json.images : []);
+      return list
+        .map((name) => `Aide/${encodeURIComponent(lang)}/${encodeURIComponent(String(name))}`)
+        .filter(Boolean);
+    };
+
+    let images = [];
+    try {
+      images = normalize(safeLang, await fetchHelpManifest(safeLang));
+    } catch (e) {
+    }
+
+    helpState.lang = safeLang;
+    helpState.images = images;
+    helpState.index = 0;
+    if (helpState.images.length) {
+      renderHelpThumbs();
+      setHelpIndex(0);
+    } else {
+      renderHelpEmpty();
+      resetHelpZoom();
+    }
+  };
+
+  const openHelpModal = async () => {
+    if (!helpModal) return;
+    await loadHelpImages();
+    helpModal.classList.remove('hidden');
+    applyHelpTransform();
+  };
+
+  if (helpBtn) {
+    helpBtn.addEventListener('click', async () => {
+      if (helpModal && !helpModal.classList.contains('hidden')) {
+        closeHelpModal();
+        return;
+      }
+      try {
+        closeExamplesMenu();
+      } catch (e) {
+      }
+      try {
+        closeTutosMenu();
+      } catch (e) {
+      }
+      await openHelpModal();
+    });
+  }
+
+  if (helpCloseBtn) {
+    helpCloseBtn.addEventListener('click', () => closeHelpModal());
+  }
+  if (helpResetZoomBtn) {
+    helpResetZoomBtn.addEventListener('click', () => resetHelpZoom());
+  }
+  if (helpPrevBtn) {
+    helpPrevBtn.addEventListener('click', () => setHelpIndex(helpState.index - 1));
+  }
+  if (helpNextBtn) {
+    helpNextBtn.addEventListener('click', () => setHelpIndex(helpState.index + 1));
+  }
+
+  if (helpImageWrap && helpMainImage) {
+    helpImageWrap.addEventListener('wheel', (e) => {
+      if (!helpModal || helpModal.classList.contains('hidden')) return;
+      e.preventDefault();
+
+      const rect = helpImageWrap.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      const prevZoom = helpState.zoom;
+      const delta = e.deltaY;
+      const factor = delta > 0 ? 0.9 : 1.1;
+      const nextZoom = Math.max(1, Math.min(6, prevZoom * factor));
+      if (nextZoom === prevZoom) return;
+
+      // Keep the point under the cursor stable in screen space.
+      // With transform: translate(pan) scale(zoom) and origin (0,0), the screen point is:
+      // s = (p * zoom) + pan  =>  p = (s - pan) / zoom
+      const px = (mx - helpState.panX) / prevZoom;
+      const py = (my - helpState.panY) / prevZoom;
+      helpState.zoom = nextZoom;
+      helpState.panX = mx - px * nextZoom;
+      helpState.panY = my - py * nextZoom;
+      applyHelpTransform();
+    }, { passive: false });
+
+    helpMainImage.addEventListener('dblclick', (e) => {
+      if (!helpModal || helpModal.classList.contains('hidden')) return;
+      e.preventDefault();
+      if (helpState.zoom > 1) {
+        resetHelpZoom();
+        return;
+      }
+
+      const rect = helpImageWrap.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const nextZoom = 2;
+      helpState.zoom = nextZoom;
+      helpState.panX = -(mx * (nextZoom - 1));
+      helpState.panY = -(my * (nextZoom - 1));
+      applyHelpTransform();
+    });
+
+    helpMainImage.addEventListener('mousedown', (e) => {
+      if (helpState.zoom <= 1) return;
+      helpState.isDragging = true;
+      helpState.dragStartX = e.clientX;
+      helpState.dragStartY = e.clientY;
+      helpState.dragStartPanX = helpState.panX;
+      helpState.dragStartPanY = helpState.panY;
+      try {
+        helpImageWrap.classList.add('is-dragging');
+      } catch (err) {
+      }
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!helpState.isDragging) return;
+      const dx = e.clientX - helpState.dragStartX;
+      const dy = e.clientY - helpState.dragStartY;
+      helpState.panX = helpState.dragStartPanX + dx;
+      helpState.panY = helpState.dragStartPanY + dy;
+      applyHelpTransform();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!helpState.isDragging) return;
+      helpState.isDragging = false;
+      try {
+        helpImageWrap.classList.remove('is-dragging');
+      } catch (err) {
+      }
+    });
+  }
+  if (helpModal) {
+    helpModal.addEventListener('click', (e) => {
+      const content = helpModal.querySelector('.modal-content');
+      const target = e.target;
+      if (content && content.contains(target)) return;
+      closeHelpModal();
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (helpModal && !helpModal.classList.contains('hidden')) {
+      closeHelpModal();
+      return;
+    }
+  });
+
   function toggleAccountPanel(forceOpen) {
     if (!accountPanel) return;
     if (forceOpen === true) accountPanel.classList.remove('hidden');
     else if (forceOpen === false) accountPanel.classList.add('hidden');
     else accountPanel.classList.toggle('hidden');
+  }
+
+  function t(key, options, fallback) {
+    try {
+      if (window.i18next && window.i18next.isInitialized) {
+        const res = window.i18next.t(key, options);
+        if (typeof res === 'string' && res.length) return res;
+      }
+    } catch (e) {
+    }
+    return fallback;
+  }
+
+  const schedulePreviewResize = (() => {
+    let raf = 0;
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (activeTabName === 'textures') {
+          renderPreview();
+        }
+      });
+    };
+  })();
+
+  const scheduleSystemLayoutUpdate = (() => {
+    let raf = 0;
+    let lastStacked = false;
+    let lastTwoCol = false;
+
+    const MIN_MAIN_WIDTH = 980;
+    const UNSTACK_MAIN_WIDTH = 1100;
+
+    const TWO_COL_MAIN_WIDTH = 1180;
+    const UN_TWO_COL_MAIN_WIDTH = 1280;
+
+    const getShellGap = () => {
+      try {
+        const shell = document.querySelector('.app-shell');
+        if (!shell) return 12;
+        const gap = parseFloat(getComputedStyle(shell).gap);
+        return Number.isFinite(gap) ? gap : 12;
+      } catch (e) {
+        return 12;
+      }
+    };
+
+    const applyStackedClass = (stacked) => {
+      try {
+        document.documentElement.classList.toggle('system-stacked', Boolean(stacked));
+      } catch (e) {
+      }
+      lastStacked = Boolean(stacked);
+
+      if (stacked) {
+        try {
+          document.documentElement.classList.remove('system-two-col');
+        } catch (e) {
+        }
+        lastTwoCol = false;
+      }
+
+      if (!systemInfoModal) return;
+      if (stacked) {
+        try {
+          systemInfoModal.style.width = '';
+        } catch (e) {
+        }
+      }
+    };
+
+    const update = () => {
+      if (!systemInfoModal) return;
+      const isOpen = !systemInfoModal.classList.contains('hidden');
+      try {
+        if (!isOpen) {
+          applyStackedClass(false);
+          try {
+            document.documentElement.classList.remove('system-two-col');
+          } catch (e) {
+          }
+          lastTwoCol = false;
+          return;
+        }
+
+        const main = document.querySelector('main.app');
+        if (!main) return;
+
+        const shell = document.querySelector('.app-shell');
+        const shellW = shell ? shell.getBoundingClientRect().width : window.innerWidth;
+        const mainW = main.getBoundingClientRect().width;
+        const gap = getShellGap();
+        const minPanelW = 320;
+        const maxPanelW = Math.floor(shellW - gap - MIN_MAIN_WIDTH);
+
+        if (maxPanelW < minPanelW) {
+          applyStackedClass(true);
+          return;
+        }
+
+        if (lastStacked) {
+          if (mainW > UNSTACK_MAIN_WIDTH) {
+            applyStackedClass(false);
+            const storedW = getStoredSystemPanelWidth();
+            if (storedW) applySystemPanelWidth(storedW);
+          }
+          return;
+        }
+
+        if (mainW < MIN_MAIN_WIDTH) {
+          applyStackedClass(true);
+          return;
+        }
+
+        if (lastTwoCol) {
+          if (mainW > UN_TWO_COL_MAIN_WIDTH) {
+            try {
+              document.documentElement.classList.remove('system-two-col');
+            } catch (e) {
+            }
+            lastTwoCol = false;
+          }
+        } else if (mainW < TWO_COL_MAIN_WIDTH) {
+          try {
+            document.documentElement.classList.add('system-two-col');
+          } catch (e) {
+          }
+          lastTwoCol = true;
+        }
+      } catch (e) {
+      }
+    };
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        update();
+      });
+    };
+  })();
+
+  const sysFpsValue = document.getElementById('sysFpsValue');
+  const sysFrameTimeValue = document.getElementById('sysFrameTimeValue');
+  const sysHeapValue = document.getElementById('sysHeapValue');
+  const sysFpsBar = document.getElementById('sysFpsBar');
+  const sysFrameBar = document.getElementById('sysFrameBar');
+  const sysHeapBar = document.getElementById('sysHeapBar');
+  const sysFpsChart = document.getElementById('sysFpsChart');
+
+  const sysBrowser = document.getElementById('sysBrowser');
+  const sysPlatform = document.getElementById('sysPlatform');
+  const sysLanguage = document.getElementById('sysLanguage');
+  const sysCpu = document.getElementById('sysCpu');
+  const sysRam = document.getElementById('sysRam');
+  const sysScreen = document.getElementById('sysScreen');
+  const sysStorage = document.getElementById('sysStorage');
+  const sysAgentStatus = document.getElementById('sysAgentStatus');
+  const sysOs = document.getElementById('sysOs');
+  const sysCpuModel = document.getElementById('sysCpuModel');
+  const sysCpuUsage = document.getElementById('sysCpuUsage');
+  const sysLoadAvg = document.getElementById('sysLoadAvg');
+  const sysRamUsage = document.getElementById('sysRamUsage');
+
+  const sysWebGpu = document.getElementById('sysWebGpu');
+  const sysWebGpuAdapter = document.getElementById('sysWebGpuAdapter');
+  const sysWebGpuFeatures = document.getElementById('sysWebGpuFeatures');
+  const sysWebGl = document.getElementById('sysWebGl');
+  const sysGpuName = document.getElementById('sysGpuName');
+  const sysGpuDriver = document.getElementById('sysGpuDriver');
+  const sysGpuUtil = document.getElementById('sysGpuUtil');
+  const sysVramUsage = document.getElementById('sysVramUsage');
+  const sysGpuUtilBar = document.getElementById('sysGpuUtilBar');
+  const sysVramBar = document.getElementById('sysVramBar');
+  const sysGpuUtilChart = document.getElementById('sysGpuUtilChart');
+  const sysVramChart = document.getElementById('sysVramChart');
+  const sysGpuDetectedCount = document.getElementById('sysGpuDetectedCount');
+  const sysGpuDetectedList = document.getElementById('sysGpuDetectedList');
+
+  const sysTexCount = document.getElementById('sysTexCount');
+  const sysTexBytes = document.getElementById('sysTexBytes');
+  const sysWebGpuLimits = document.getElementById('sysWebGpuLimits');
+
+  let sysRafId = null;
+  let sysAgentIntervalId = null;
+  let sysLastAgentData = null;
+  let sysLastTs = 0;
+  let sysFrameTimes = [];
+  let sysFpsSamples = [];
+  let sysGpuUtilSamples = [];
+  let sysVramSamples = [];
+  let webgpuProbePromise = null;
+
+  const clamp01 = (n) => Math.max(0, Math.min(1, Number(n) || 0));
+
+  const formatBytes = (bytes) => {
+    const b = Number(bytes) || 0;
+    if (!Number.isFinite(b) || b <= 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let v = b;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i += 1;
+    }
+    return `${v.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+  };
+
+  const formatPercent = (n01) => `${Math.round(clamp01(n01) * 100)}%`;
+
+  const safeJson = (obj) => {
+    try {
+      return JSON.stringify(obj, null, 2);
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const extractPrototypeGetters = (obj) => {
+    if (!obj || (typeof obj !== 'object' && typeof obj !== 'function')) return obj;
+    const out = {};
+    try {
+      const proto = Object.getPrototypeOf(obj);
+      if (!proto) return obj;
+      Object.getOwnPropertyNames(proto).forEach((name) => {
+        if (name === 'constructor') return;
+        const desc = Object.getOwnPropertyDescriptor(proto, name);
+        if (!desc || typeof desc.get !== 'function') return;
+        try {
+          const v = obj[name];
+          if (typeof v !== 'function') out[name] = v;
+        } catch (e) {
+        }
+      });
+    } catch (e) {
+      return obj;
+    }
+    return Object.keys(out).length ? out : obj;
+  };
+
+  const toSerializable = (obj) => {
+    if (!obj || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj;
+    const extracted = extractPrototypeGetters(obj);
+    if (extracted !== obj) return extracted;
+    try {
+      const keys = Reflect.ownKeys(obj);
+      if (keys && keys.length) return obj;
+    } catch (e) {
+    }
+    return obj;
+  };
+
+  const ensureWebGPUProbe = async () => {
+    if (!navigator.gpu) return;
+    if (currentAdapter && currentDevice) return;
+    if (webgpuProbePromise) {
+      try {
+        await webgpuProbePromise;
+      } catch (e) {
+      }
+      return;
+    }
+
+    webgpuProbePromise = (async () => {
+      const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      if (!adapter) return;
+      currentAdapter = adapter;
+      if (!currentAdapterInfo) {
+        try {
+          if (typeof adapter.requestAdapterInfo === 'function') {
+            currentAdapterInfo = await adapter.requestAdapterInfo();
+          } else if (adapter.info) {
+            currentAdapterInfo = adapter.info;
+          }
+        } catch (e) {
+        }
+      }
+      if (!currentDevice) {
+        try {
+          currentDevice = await adapter.requestDevice();
+        } catch (e) {
+        }
+      }
+    })();
+
+    try {
+      await webgpuProbePromise;
+    } catch (e) {
+    } finally {
+      webgpuProbePromise = null;
+    }
+  };
+
+  const limitsToObject = (limits) => {
+    if (!limits) return null;
+    const extracted = extractPrototypeGetters(limits);
+    if (extracted && extracted !== limits) return extracted;
+    return null;
+  };
+
+  const setBar = (el, value01) => {
+    if (!el) return;
+    el.style.width = `${Math.round(clamp01(value01) * 100)}%`;
+  };
+
+  const drawSpark = (canvas, samples, minV, maxV) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(124, 247, 196, 0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const n = samples.length;
+    if (n <= 1) return;
+    for (let i = 0; i < n; i += 1) {
+      const x = (i / (n - 1)) * (w - 8) + 4;
+      const v = samples[i];
+      const t = clamp01((v - minV) / (maxV - minV));
+      const y = (1 - t) * (h - 8) + 4;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+
+  const getWebGLInfo = () => {
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (!gl) return 'Not available';
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      if (dbg) {
+        const vendor = gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL);
+        const renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+        return `${vendor} · ${renderer}`;
+      }
+      return String(gl.getParameter(gl.RENDERER) || 'WebGL');
+    } catch (e) {
+      return 'Not available';
+    }
+  };
+
+  const updateSystemStatic = async () => {
+    await ensureWebGPUProbe();
+    if (sysBrowser) sysBrowser.textContent = navigator.userAgent || '—';
+    if (sysPlatform) sysPlatform.textContent = navigator.platform || '—';
+    if (sysLanguage) sysLanguage.textContent = navigator.language || '—';
+
+    try {
+      const ua = navigator.userAgentData;
+      if (ua && typeof ua.getHighEntropyValues === 'function') {
+        const hi = await ua.getHighEntropyValues(['platformVersion', 'architecture', 'model', 'uaFullVersion']);
+        if (sysPlatform) {
+          const parts = [ua.platform, hi.platformVersion, hi.architecture, hi.model].filter(Boolean);
+          sysPlatform.textContent = parts.join(' · ') || (navigator.platform || '—');
+        }
+        if (sysBrowser) {
+          const brand = Array.isArray(ua.brands) ? ua.brands.map((b) => `${b.brand} ${b.version}`).join(', ') : '';
+          sysBrowser.textContent = [brand, hi.uaFullVersion].filter(Boolean).join(' · ') || (navigator.userAgent || '—');
+        }
+      }
+    } catch (e) {
+    }
+
+    const cores = navigator.hardwareConcurrency;
+    if (sysCpu) {
+      sysCpu.textContent = Number.isFinite(cores)
+        ? t('system.values.cpu_cores', { count: cores }, `${cores} cores`)
+        : '—';
+    }
+
+    const ramGb = navigator.deviceMemory;
+    if (sysRam) sysRam.textContent = Number.isFinite(ramGb) ? `~${ramGb} GB` : '—';
+
+    const screenText = `${window.screen?.width || 0}×${window.screen?.height || 0} @${window.devicePixelRatio || 1}x`;
+    if (sysScreen) sysScreen.textContent = screenText;
+
+    if (sysWebGpu) {
+      sysWebGpu.textContent = navigator.gpu
+        ? t('system.values.supported', null, 'Supported')
+        : t('system.values.not_supported', null, 'Not supported');
+    }
+    if (sysWebGl) {
+      const glInfo = getWebGLInfo();
+      sysWebGl.textContent = (glInfo === 'Not available')
+        ? t('system.values.not_available', null, 'Not available')
+        : glInfo;
+    }
+
+    if (sysStorage) {
+      try {
+        if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+          const est = await navigator.storage.estimate();
+          const usage = est?.usage;
+          const quota = est?.quota;
+          if (Number.isFinite(usage) && Number.isFinite(quota) && quota > 0) {
+            sysStorage.textContent = `${formatBytes(usage)} / ${formatBytes(quota)} (${formatPercent(usage / quota)})`;
+          } else {
+            sysStorage.textContent = '—';
+          }
+        } else {
+          sysStorage.textContent = '—';
+        }
+      } catch (e) {
+        sysStorage.textContent = '—';
+      }
+    }
+
+    if (sysWebGpuAdapter) {
+      if (currentAdapterInfo && typeof currentAdapterInfo === 'object') {
+        const parts = [];
+        if (currentAdapterInfo.vendor) parts.push(currentAdapterInfo.vendor);
+        if (currentAdapterInfo.architecture) parts.push(currentAdapterInfo.architecture);
+        if (currentAdapterInfo.description) parts.push(currentAdapterInfo.description);
+        if (currentAdapterInfo.device) parts.push(currentAdapterInfo.device);
+        sysWebGpuAdapter.textContent = parts.filter(Boolean).join(' · ') || '—';
+      } else {
+        sysWebGpuAdapter.textContent = '—';
+      }
+    }
+
+    if (sysWebGpuFeatures) {
+      if (currentDevice && currentDevice.features) {
+        const feats = Array.from(currentDevice.features);
+        sysWebGpuFeatures.textContent = feats.slice(0, 12).join(', ') || '—';
+      } else {
+        sysWebGpuFeatures.textContent = '—';
+      }
+    }
+
+    if (sysWebGpuLimits) {
+      if (currentDevice && currentDevice.limits) {
+        const l = currentDevice.limits;
+        sysWebGpuLimits.textContent = `maxBufferSize=${l.maxBufferSize} · maxStorageBufferBindingSize=${l.maxStorageBufferBindingSize} · maxTextureDimension2D=${l.maxTextureDimension2D}`;
+      } else {
+        sysWebGpuLimits.textContent = '—';
+      }
+    }
+  };
+
+  const estimateTextureBytes = () => {
+    let total = 0;
+    textures.forEach((tex) => {
+      const x = tex?.size?.x || 0;
+      const y = tex?.size?.y || 0;
+      const z = tex?.size?.z || 0;
+      total += x * y * z * 4;
+    });
+    return total;
+  };
+
+  const estimateBufferBytes = () => {
+    let total = 0;
+    try {
+      bindingBuffers.forEach((entry) => {
+        total += Number(entry?.size) || 0;
+      });
+    } catch (e) {
+    }
+    return total;
+  };
+
+  const updateSystemApp = () => {
+    if (sysTexCount) sysTexCount.textContent = String(textures.length);
+    if (sysTexBytes) {
+      const texBytes = estimateTextureBytes();
+      const bufBytes = estimateBufferBytes();
+      sysTexBytes.textContent = `${formatBytes(texBytes)} (+ ${formatBytes(bufBytes)} buffers)`;
+    }
+  };
+
+  const getSystemSnapshot = async () => {
+    let storage = null;
+    try {
+      storage = (navigator.storage && navigator.storage.estimate) ? await navigator.storage.estimate() : null;
+    } catch (e) {
+      storage = null;
+    }
+    return {
+      time: new Date().toISOString(),
+      navigator: {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemoryGB: navigator.deviceMemory,
+      },
+      screen: {
+        width: window.screen?.width,
+        height: window.screen?.height,
+        devicePixelRatio: window.devicePixelRatio,
+      },
+      storage,
+      webgl: {
+        renderer: getWebGLInfo(),
+      },
+      webgpu: {
+        supported: Boolean(navigator.gpu),
+        adapterInfo: currentAdapterInfo ? toSerializable(currentAdapterInfo) : null,
+        features: currentDevice?.features ? Array.from(currentDevice.features) : [],
+        limits: currentDevice?.limits ? limitsToObject(currentDevice.limits) : null,
+      },
+      agent: sysLastAgentData,
+      app: {
+        texturesCount: textures.length,
+        texturesBytesEstimated: estimateTextureBytes(),
+        buffersBytesEstimated: estimateBufferBytes(),
+        textures: textures.map((tex) => ({
+          id: tex.id,
+          name: tex.name,
+          type: tex.type,
+          size: tex.size,
+          bytesEstimated: (tex?.size?.x || 0) * (tex?.size?.y || 0) * (tex?.size?.z || 0) * 4,
+        })),
+      },
+    };
+  };
+
+  const agentBaseUrl = 'http://127.0.0.1:8765';
+  const systemPanelWidthKey = 'wgstudio.systemPanelWidth';
+
+  const getStoredSystemPanelWidth = () => {
+    try {
+      const v = Number(localStorage.getItem(systemPanelWidthKey));
+      return Number.isFinite(v) ? v : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const setStoredSystemPanelWidth = (px) => {
+    try {
+      localStorage.setItem(systemPanelWidthKey, String(Math.round(px)));
+    } catch (e) {
+    }
+  };
+
+  const applySystemPanelWidth = (px) => {
+    if (!systemInfoModal) return;
+    try {
+      if (document.documentElement.classList.contains('system-stacked')) {
+        systemInfoModal.style.width = '';
+        return;
+      }
+    } catch (e) {
+    }
+
+    const shell = document.querySelector('.app-shell');
+    const shellW = shell ? shell.getBoundingClientRect().width : window.innerWidth;
+    let gap = 12;
+    try {
+      gap = shell ? (parseFloat(getComputedStyle(shell).gap) || 12) : 12;
+    } catch (e) {
+    }
+
+    const minPanelW = 320;
+    const minMainW = 980;
+    const maxPanelW = Math.max(minPanelW, Math.floor(shellW - gap - minMainW));
+
+    const candidate = Number(px) || 0;
+    const w = Math.max(minPanelW, Math.min(window.innerWidth * 0.92, Math.min(maxPanelW, candidate)));
+
+    if (Number.isFinite(w) && w > 0) systemInfoModal.style.width = `${Math.round(w)}px`;
+    scheduleSystemLayoutUpdate();
+  };
+
+  const stopAgentPoll = () => {
+    if (sysAgentIntervalId) clearInterval(sysAgentIntervalId);
+    sysAgentIntervalId = null;
+  };
+
+  const fetchAgentSystem = async () => {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 900);
+    try {
+      const res = await fetch(`${agentBaseUrl}/system`, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data;
+    } finally {
+      clearTimeout(to);
+    }
+  };
+
+  const setText = (el, txt) => {
+    if (!el) return;
+    el.textContent = txt;
+  };
+
+  const updateFromAgent = (data) => {
+    sysLastAgentData = data;
+    setText(sysAgentStatus, t('system.values.agent_online', null, 'Online'));
+
+    if (sysCpu) {
+      const c = data?.cpu?.coresLogical;
+      if (Number.isFinite(c)) {
+        sysCpu.textContent = t('system.values.cpu_cores', { count: c }, `${c} cores`);
+      }
+    }
+
+    if (sysRam) {
+      const totalBytes = data?.memory?.totalBytes;
+      if (Number.isFinite(totalBytes) && totalBytes > 0) {
+        sysRam.textContent = `~${formatBytes(totalBytes)}`;
+      }
+    }
+
+    const osText = data?.os
+      ? `${data.os.platform || ''} ${data.os.release || ''} ${data.os.arch || ''}`.trim()
+      : '—';
+    setText(sysOs, osText || '—');
+
+    setText(sysCpuModel, data?.cpu?.model || '—');
+
+    const cpuUsage01 = (typeof data?.cpu?.usage01 === 'number') ? data.cpu.usage01 : null;
+    setText(sysCpuUsage, cpuUsage01 === null ? '—' : `${Math.round(cpuUsage01 * 100)}%`);
+
+    const load = Array.isArray(data?.cpu?.loadavg) ? data.cpu.loadavg : null;
+    setText(sysLoadAvg, load ? load.map((n) => Number(n).toFixed(2)).join(', ') : '—');
+
+    const total = data?.memory?.totalBytes;
+    const free = data?.memory?.freeBytes;
+    if (Number.isFinite(total) && Number.isFinite(free) && total > 0) {
+      const used = total - free;
+      setText(sysRamUsage, `${formatBytes(used)} / ${formatBytes(total)} (${formatPercent(used / total)})`);
+    } else {
+      setText(sysRamUsage, '—');
+    }
+
+    const nvsmi = Array.isArray(data?.gpu?.nvidiaSmi) ? data.gpu.nvidiaSmi : null;
+    if (nvsmi && nvsmi.length) {
+      const g0 = nvsmi[0];
+      setText(sysGpuName, g0.name || 'NVIDIA');
+      setText(sysGpuDriver, g0.driverVersion || '—');
+      const utilPct = Number.isFinite(g0.utilizationGpuPercent) ? g0.utilizationGpuPercent : null;
+      setText(sysGpuUtil, utilPct === null ? '—' : `${utilPct}%`);
+      if (sysGpuUtilBar) setBar(sysGpuUtilBar, utilPct === null ? 0 : clamp01(utilPct / 100));
+      if (utilPct !== null) {
+        sysGpuUtilSamples.push(utilPct);
+        sysGpuUtilSamples = sysGpuUtilSamples.slice(-90);
+        drawSpark(sysGpuUtilChart, sysGpuUtilSamples, 0, 100);
+      }
+
+      if (Number.isFinite(g0.memoryUsedMB) && Number.isFinite(g0.memoryTotalMB) && g0.memoryTotalMB > 0) {
+        const usedB = g0.memoryUsedMB * 1024 * 1024;
+        const totB = g0.memoryTotalMB * 1024 * 1024;
+        setText(sysVramUsage, `${formatBytes(usedB)} / ${formatBytes(totB)} (${formatPercent(usedB / totB)})`);
+        if (sysVramBar) setBar(sysVramBar, clamp01(usedB / totB));
+        const vramPct = (usedB / totB) * 100;
+        sysVramSamples.push(vramPct);
+        sysVramSamples = sysVramSamples.slice(-90);
+        drawSpark(sysVramChart, sysVramSamples, 0, 100);
+      } else {
+        setText(sysVramUsage, '—');
+        if (sysVramBar) setBar(sysVramBar, 0);
+      }
+    } else {
+      const pci = Array.isArray(data?.gpu?.pci) ? data.gpu.pci : null;
+      setText(sysGpuName, pci && pci.length ? pci[0] : '—');
+      setText(sysGpuDriver, '—');
+      setText(sysGpuUtil, '—');
+      setText(sysVramUsage, '—');
+      if (sysGpuUtilBar) setBar(sysGpuUtilBar, 0);
+      if (sysVramBar) setBar(sysVramBar, 0);
+      sysGpuUtilSamples = [];
+      sysVramSamples = [];
+      drawSpark(sysGpuUtilChart, sysGpuUtilSamples, 0, 100);
+      drawSpark(sysVramChart, sysVramSamples, 0, 100);
+    }
+
+    const pci = Array.isArray(data?.gpu?.pci) ? data.gpu.pci : [];
+    const allGpuLines = [];
+    if (pci.length) {
+      allGpuLines.push('PCI:');
+      pci.forEach((l) => allGpuLines.push(`- ${l}`));
+    }
+    if (nvsmi && nvsmi.length) {
+      allGpuLines.push('nvidia-smi:');
+      nvsmi.forEach((g) => {
+        const used = Number.isFinite(g.memoryUsedMB) ? `${g.memoryUsedMB}MB` : '—';
+        const tot = Number.isFinite(g.memoryTotalMB) ? `${g.memoryTotalMB}MB` : '—';
+        const util = Number.isFinite(g.utilizationGpuPercent) ? `${g.utilizationGpuPercent}%` : '—';
+        const temp = Number.isFinite(g.temperatureC) ? `${g.temperatureC}°C` : '—';
+        allGpuLines.push(`- ${g.name || 'NVIDIA'} · VRAM ${used}/${tot} · util ${util} · ${temp}`);
+      });
+    }
+    if (sysGpuDetectedCount) {
+      const count = (pci?.length || 0) || (nvsmi?.length || 0) || 0;
+      sysGpuDetectedCount.textContent = count ? String(count) : '—';
+    }
+    if (sysGpuDetectedList) {
+      sysGpuDetectedList.textContent = allGpuLines.join('\n');
+    }
+
+  };
+
+  const setAgentOffline = (err) => {
+    sysLastAgentData = null;
+    setText(sysAgentStatus, t('system.values.agent_offline', null, 'Offline'));
+    setText(sysOs, '—');
+    setText(sysCpuModel, '—');
+    setText(sysCpuUsage, '—');
+    setText(sysLoadAvg, '—');
+    setText(sysRamUsage, '—');
+    setText(sysGpuName, '—');
+    setText(sysGpuDriver, '—');
+    setText(sysGpuUtil, '—');
+    setText(sysVramUsage, '—');
+    if (sysGpuUtilBar) setBar(sysGpuUtilBar, 0);
+    if (sysVramBar) setBar(sysVramBar, 0);
+    sysGpuUtilSamples = [];
+    sysVramSamples = [];
+    drawSpark(sysGpuUtilChart, sysGpuUtilSamples, 0, 100);
+    drawSpark(sysVramChart, sysVramSamples, 0, 100);
+    if (sysGpuDetectedCount) sysGpuDetectedCount.textContent = '—';
+    if (sysGpuDetectedList) sysGpuDetectedList.textContent = '';
+  };
+
+  const startAgentPoll = () => {
+    stopAgentPoll();
+    const tick = async () => {
+      if (!systemInfoModal || systemInfoModal.classList.contains('hidden')) {
+        stopAgentPoll();
+        return;
+      }
+      try {
+        const data = await fetchAgentSystem();
+        updateFromAgent(data);
+      } catch (e) {
+        setAgentOffline(e);
+      }
+    };
+    tick();
+    sysAgentIntervalId = setInterval(tick, 1000);
+  };
+
+  const stopSystemMonitor = () => {
+    if (sysRafId) cancelAnimationFrame(sysRafId);
+    sysRafId = null;
+    sysLastTs = 0;
+    sysFrameTimes = [];
+    sysFpsSamples = [];
+  };
+
+  const startSystemMonitor = () => {
+    stopSystemMonitor();
+    const loop = (ts) => {
+      if (!systemInfoModal || systemInfoModal.classList.contains('hidden')) {
+        stopSystemMonitor();
+        return;
+      }
+      if (sysLastTs) {
+        const dt = ts - sysLastTs;
+        sysFrameTimes.push(dt);
+        if (sysFrameTimes.length > 120) sysFrameTimes.shift();
+        const fps = dt > 0 ? 1000 / dt : 0;
+        sysFpsSamples.push(fps);
+        if (sysFpsSamples.length > 120) sysFpsSamples.shift();
+      }
+      sysLastTs = ts;
+
+      const avgFps = sysFpsSamples.length
+        ? sysFpsSamples.reduce((a, b) => a + b, 0) / sysFpsSamples.length
+        : 0;
+      const avgFrame = sysFrameTimes.length
+        ? sysFrameTimes.reduce((a, b) => a + b, 0) / sysFrameTimes.length
+        : 0;
+
+      if (sysFpsValue) sysFpsValue.textContent = avgFps ? `${avgFps.toFixed(1)}` : '—';
+      if (sysFrameTimeValue) sysFrameTimeValue.textContent = avgFrame ? `${avgFrame.toFixed(2)} ms` : '—';
+      setBar(sysFpsBar, clamp01(avgFps / 60));
+      setBar(sysFrameBar, clamp01(avgFrame / 16.67));
+      drawSpark(sysFpsChart, sysFpsSamples.slice(-90), 0, 120);
+
+      if (sysHeapValue || sysHeapBar) {
+        const mem = performance && performance.memory ? performance.memory : null;
+        if (mem && mem.usedJSHeapSize && mem.jsHeapSizeLimit) {
+          const used = mem.usedJSHeapSize;
+          const limit = mem.jsHeapSizeLimit;
+          if (sysHeapValue) sysHeapValue.textContent = `${formatBytes(used)} / ${formatBytes(limit)}`;
+          setBar(sysHeapBar, clamp01(used / limit));
+        } else {
+          if (sysHeapValue) sysHeapValue.textContent = '—';
+          setBar(sysHeapBar, 0);
+        }
+      }
+
+      updateSystemApp();
+      sysRafId = requestAnimationFrame(loop);
+    };
+    sysRafId = requestAnimationFrame(loop);
+  };
+
+  const openSystemInfo = async () => {
+    if (!systemInfoModal) return;
+    systemInfoModal.classList.remove('hidden');
+    try {
+      document.documentElement.classList.add('system-open');
+    } catch (e) {
+    }
+    const storedW = getStoredSystemPanelWidth();
+    if (storedW) applySystemPanelWidth(storedW);
+
+    schedulePreviewResize();
+    try {
+      systemInfoModal.getBoundingClientRect();
+      const main = document.querySelector('main.app');
+      if (main) main.getBoundingClientRect();
+      const shell = document.querySelector('.app-shell');
+      if (shell) shell.getBoundingClientRect();
+    } catch (e) {
+    }
+
+    scheduleSystemLayoutUpdate();
+    requestAnimationFrame(() => scheduleSystemLayoutUpdate());
+    setTimeout(() => scheduleSystemLayoutUpdate(), 0);
+    setTimeout(() => scheduleSystemLayoutUpdate(), 80);
+
+    await updateSystemStatic();
+    updateSystemApp();
+    startSystemMonitor();
+    startAgentPoll();
+    schedulePreviewResize();
+    scheduleSystemLayoutUpdate();
+  };
+
+  const closeSystemInfo = () => {
+    if (!systemInfoModal) return;
+    systemInfoModal.classList.add('hidden');
+    try {
+      document.documentElement.classList.remove('system-open');
+    } catch (e) {
+    }
+    try {
+      document.documentElement.classList.remove('system-stacked');
+    } catch (e) {
+    }
+    stopSystemMonitor();
+    stopAgentPoll();
+    schedulePreviewResize();
+    scheduleSystemLayoutUpdate();
+  };
+
+  function getStoredTheme() {
+    try {
+      const raw = localStorage.getItem('wgstudio.theme');
+      return (raw === 'light' || raw === 'dark') ? raw : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setStoredTheme(theme) {
+    try {
+      localStorage.setItem('wgstudio.theme', theme);
+    } catch (e) {
+    }
+  }
+
+  function applyTheme(theme) {
+    const next = (theme === 'light') ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    if (themeToggleBtn) {
+      themeToggleBtn.textContent = next === 'dark' ? '☀' : '☾';
+      themeToggleBtn.setAttribute('aria-label', next === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre');
+    }
+    setStoredTheme(next);
+  }
+
+  function getStoredLanguage() {
+    try {
+      const raw = localStorage.getItem('wgstudio.language');
+      return (raw === 'fr' || raw === 'en') ? raw : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setStoredLanguage(lang) {
+    try {
+      localStorage.setItem('wgstudio.language', lang);
+    } catch (e) {
+    }
+  }
+
+  function applyTranslations() {
+    if (!window.i18next || !window.i18next.isInitialized) return;
+
+    const versionPill = document.getElementById('versionPill');
+    if (versionPill && versionPill.dataset && versionPill.dataset.version) {
+      versionPill.textContent = window.i18next.t('header.version', { version: versionPill.dataset.version });
+    }
+
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      const key = el.getAttribute('data-i18n');
+      if (!key) return;
+      if (el === versionPill) return;
+      const translation = window.i18next.t(key);
+      if (typeof translation !== 'string') return;
+
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      if (translation.includes('<')) el.innerHTML = translation;
+      else el.textContent = translation;
+    });
+
+    document.documentElement.lang = window.i18next.language || 'fr';
+
+    if (languageSelect) {
+      languageSelect.value = window.i18next.language || 'fr';
+    }
+
+    renderStepCounter();
+    setPreviewValue(0, 0, null);
+    setRunSpeed(runSpeedSlider?.value || 60);
+    if (selectedPipeId) renderPipelineViews();
+    if (selectedFunctionId) renderFunctionViews();
+    if (selectedShaderId) {
+      const shader = shaders.find((s) => s.id === selectedShaderId) || shaders[0];
+      if (shader) {
+        selectedShaderId = shader.id;
+        renderShaderList();
+        renderShaderForm(shader);
+        renderShaderEditor(shader);
+      }
+    }
+    if (activeTabName === 'textures') {
+      renderPreview();
+    }
+  }
+
+  async function initI18n() {
+    if (!window.i18next || !window.i18nextHttpBackend) return;
+    const lng = getStoredLanguage() || document.documentElement.lang || 'fr';
+    try {
+      await window.i18next
+        .use(window.i18nextHttpBackend)
+        .init({
+          lng,
+          fallbackLng: 'fr',
+          debug: false,
+          backend: {
+            loadPath: 'locales/{{lng}}/translation.json',
+          },
+          interpolation: {
+            escapeValue: false,
+          },
+          returnNull: false,
+        });
+      if (languageSelect) {
+        languageSelect.value = window.i18next.language || lng;
+      }
+      applyTranslations();
+    } catch (e) {
+    }
   }
 
   function setAccountError(message) {
@@ -802,15 +1983,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setAccountState(user) {
     if (!accountStatus) return;
-    const fallbackName = t('account.userFallback');
     accountStatus.textContent = user
-      ? t('account.status.connected', { email: user.email || fallbackName })
-      : t('account.status.disconnected');
+      ? `Connecté: ${user.email || 'utilisateur'}`
+      : 'Non connecté';
     if (accountForms) accountForms.classList.toggle('hidden', !!user);
     if (accountActions) accountActions.classList.toggle('hidden', !user);
     if (newsletterOptIn) {
       newsletterOptIn.disabled = !user;
       if (!user) newsletterOptIn.checked = false;
+    }
+  }
+
+  function renderLineNumbers(textarea, gutter, errorLines = new Set()) {
+    if (!textarea || !gutter) return;
+    const value = textarea.value || '';
+    const lines = value ? value.split(/\r?\n/).length : 1;
+    const fragment = document.createDocumentFragment();
+    for (let i = 1; i <= lines; i += 1) {
+      const div = document.createElement('div');
+      div.className = errorLines.has(i) ? 'code-line-num error' : 'code-line-num';
+      div.textContent = String(i);
+      fragment.appendChild(div);
+    }
+    gutter.innerHTML = '';
+    gutter.appendChild(fragment);
+    gutter.scrollTop = textarea.scrollTop;
+  }
+
+  function firstErrorLocation(kind, id) {
+    const candidates = lastLiveWGSLMessages
+      .filter((m) => m.resolved && m.resolved.kind === kind && m.resolved.id === id)
+      .filter((m) => (m.type || '').toLowerCase().includes('error'))
+      .map((m) => m.resolved);
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => (a.line - b.line) || (a.col - b.col));
+    return candidates[0];
+  }
+
+  function updateListErrorIndicators() {
+    if (functionList) {
+      functionList.querySelectorAll('.list-item[data-id]').forEach((el) => {
+        const id = el.dataset.id;
+        el.classList.toggle('has-error', functionIdsWithErrors.has(id));
+      });
+    }
+    if (shaderList) {
+      shaderList.querySelectorAll('.list-item[data-id]').forEach((el) => {
+        const id = el.dataset.id;
+        el.classList.toggle('has-error', shaderIdsWithErrors.has(id));
+      });
     }
   }
 
@@ -861,13 +2082,13 @@ document.addEventListener('DOMContentLoaded', () => {
   function initFirebaseAuth() {
     if (!accountPanel) return;
     if (!window.firebase || !firebase.initializeApp || !firebase.auth) {
-      setAccountError(t('account.errors.firebaseMissing'));
+      setAccountError(t('account.errors.firebase_sdk', null, 'Firebase SDK non charge.'));
       setAuthFormsDisabled(true);
       return;
     }
     const missingConfig = Object.values(firebaseConfig).some((val) => !val || val === 'REPLACE_ME');
     if (missingConfig) {
-      setAccountError(t('account.errors.firebaseConfigMissing'));
+      setAccountError(t('account.errors.firebase_config_missing', null, 'Firebase config manquante.'));
       setAuthFormsDisabled(true);
       return;
     }
@@ -893,7 +2114,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const email = (authEmail?.value || '').trim();
       const password = authPassword?.value || '';
       if (!email || !password) {
-        setAccountError(t('account.errors.credentialsRequired'));
+        setAccountError(t('account.errors.email_password_required', null, 'Email et mot de passe requis.'));
         return null;
       }
       return { email, password };
@@ -954,7 +2175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!firebaseAuth) return;
         const user = firebaseAuth.currentUser;
         if (!user) return;
-        const ok = window.confirm(t('account.confirm.delete'));
+        const ok = window.confirm('Confirmer la suppression definitive du compte ?');
         if (!ok) return;
         setAccountError('');
         user.delete().catch((err) => {
@@ -988,9 +2209,116 @@ document.addEventListener('DOMContentLoaded', () => {
   if (accountToggleBtn) {
     accountToggleBtn.addEventListener('click', () => toggleAccountPanel());
   }
-  if (accountCloseBtn) {
-    accountCloseBtn.addEventListener('click', () => toggleAccountPanel(false));
+  if (accountPanel) {
+    accountPanel.addEventListener('click', (e) => {
+      const card = accountPanel.querySelector('.account-card');
+      const target = e.target;
+      if (card && card.contains(target)) return;
+      toggleAccountPanel(false);
+    });
   }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!accountPanel || accountPanel.classList.contains('hidden')) return;
+    toggleAccountPanel(false);
+  });
+
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', () => {
+      const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  if (languageSelect) {
+    languageSelect.addEventListener('change', async () => {
+      const lng = languageSelect.value;
+      setStoredLanguage(lng);
+      if (tutosMenu) {
+        delete tutosMenu.dataset.loaded;
+        delete tutosMenu.dataset.lang;
+      }
+      if (helpState) {
+        helpState.lang = null;
+        helpState.images = [];
+        helpState.index = 0;
+      }
+      if (window.i18next && window.i18next.isInitialized) {
+        try {
+          await window.i18next.changeLanguage(lng);
+        } catch (e) {
+        }
+        applyTranslations();
+      } else {
+        initI18n();
+      }
+    });
+  }
+
+  if (systemInfoBtn) {
+    systemInfoBtn.addEventListener('click', () => {
+      if (systemInfoModal && !systemInfoModal.classList.contains('hidden')) {
+        closeSystemInfo();
+      } else {
+        openSystemInfo();
+      }
+    });
+  }
+
+  if (systemInfoResize && systemInfoModal) {
+    let resizing = false;
+    let startX = 0;
+    let startW = 0;
+
+    const onMove = (e) => {
+      if (!resizing) return;
+      const dx = startX - e.clientX;
+      const nextW = startW + dx;
+      applySystemPanelWidth(nextW);
+      schedulePreviewResize();
+    };
+
+    const onUp = () => {
+      if (!resizing) return;
+      resizing = false;
+      try {
+        const w = parseFloat(getComputedStyle(systemInfoModal).width);
+        if (Number.isFinite(w) && w > 0) setStoredSystemPanelWidth(w);
+      } catch (e) {
+      }
+      schedulePreviewResize();
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    systemInfoResize.addEventListener('pointerdown', (e) => {
+      resizing = true;
+      startX = e.clientX;
+      try {
+        startW = parseFloat(getComputedStyle(systemInfoModal).width) || systemInfoModal.getBoundingClientRect().width;
+      } catch (err) {
+        startW = systemInfoModal.getBoundingClientRect().width;
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+
+  try {
+    const shell = document.querySelector('.app-shell');
+    if (shell && 'ResizeObserver' in window) {
+      const ro = new ResizeObserver(() => {
+        schedulePreviewResize();
+        scheduleSystemLayoutUpdate();
+      });
+      ro.observe(shell);
+    }
+  } catch (e) {
+  }
+
+  applyTheme(getStoredTheme() || 'dark');
+  initI18n();
   initFirebaseAuth();
 
   window.addEventListener('keydown', (e) => {
@@ -1142,32 +2470,384 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Tabs switching
+  function setConsoleTabHasError(hasError) {
+    const consoleTab = Array.from(tabs).find((t) => t.dataset.tab === 'console');
+    if (!consoleTab) return;
+    consoleHasUnreadErrors = Boolean(hasError);
+    consoleTab.classList.toggle('has-error', consoleHasUnreadErrors);
+    if (consoleErrorBadge) consoleErrorBadge.classList.toggle('hidden', !consoleHasUnreadErrors);
+  }
+
+  function activateTab(tabName) {
+    tabs.forEach((t) => t.classList.remove('active'));
+    tabContents.forEach((c) => c.classList.remove('active'));
+    const tab = Array.from(tabs).find((t) => t.dataset.tab === tabName);
+    const content = document.getElementById(`tab-${tabName}`);
+    if (tab) tab.classList.add('active');
+    if (content) content.classList.add('active');
+    activeTabName = tabName;
+    try {
+      localStorage.setItem('wgstudio.activeTab', String(tabName));
+    } catch (e) {
+    }
+    if (tabName === 'functions') updateTextureDeclarationsEditor();
+    renderDiagnosticsPanels();
+    if (tabName === 'textures') {
+      requestAnimationFrame(() => {
+        renderPreview();
+      });
+    }
+  }
+
+  function validateWGSLSyntaxOnly(wgsl) {
+    const errors = [];
+    const fnMissingParen = /fn\s+[A-Za-z_][\w]*\s*{/.exec(wgsl);
+    if (fnMissingParen) {
+      errors.push('Une fonction semble manquer ses parenthèses : utilisez "fn nom()"');
+    }
+    let balance = 0;
+    wgsl.split('').forEach((ch) => {
+      if (ch === '{') balance += 1;
+      if (ch === '}') balance -= 1;
+    });
+    if (balance !== 0) {
+      errors.push('Accolades déséquilibrées dans le WGSL généré.');
+    }
+    return errors;
+  }
+
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      tabs.forEach((t) => t.classList.remove('active'));
-      tabContents.forEach((c) => c.classList.remove('active'));
-      tab.classList.add('active');
-      document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
-      if (tab.dataset.tab === 'functions') {
-        updateTextureDeclarationsEditor();
-      }
+      activateTab(tab.dataset.tab);
     });
   });
 
-  // Toggle 2D / 3D preview
+  try {
+    const storedTab = localStorage.getItem('wgstudio.activeTab');
+    if (storedTab && Array.from(tabs).some((t) => t.dataset.tab === storedTab)) {
+      activateTab(storedTab);
+    }
+  } catch (e) {
+  }
+
+  const syncPreviewModeToggles = () => {
+    toggleButtons.forEach((b) => {
+      b.classList.toggle('active', b.dataset.mode === previewMode);
+    });
+  };
+
   toggleButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
-      toggleButtons.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
       previewMode = btn.dataset.mode;
+      syncPreviewModeToggles();
       renderPreview();
     });
   });
 
+  syncPreviewModeToggles();
+
   clearConsoleBtn.addEventListener('click', () => {
     consoleMessages = [];
     renderConsole();
+    setConsoleTabHasError(false);
   });
+
+  function isConsoleError(message, meta) {
+    const metaLower = (meta || '').toLowerCase();
+    const msgLower = (message || '').toLowerCase();
+    if (metaLower.includes('warn')) return false;
+    if (msgLower.includes('webgpu is experimental on this platform')) return false;
+    if (msgLower.includes('could not establish connection')) return false;
+    return (
+      metaLower.includes('error') ||
+      metaLower.includes('err') ||
+      msgLower.includes('erreur wgsl') ||
+      msgLower.includes('échec') ||
+      msgLower.includes('error while parsing wgsl') ||
+      msgLower.includes('create shadermodule') ||
+      msgLower.includes('createshadermodule') ||
+      (msgLower.includes('wgsl') && msgLower.includes('error'))
+    );
+  }
+
+  function gotoTextAreaLocation(textarea, line, col) {
+    if (!textarea) return;
+    const value = textarea.value || '';
+    const lines = value.split(/\r?\n/);
+    const safeLine = Math.max(1, Math.min(line || 1, lines.length || 1));
+    const safeCol = Math.max(1, col || 1);
+    let offset = 0;
+    for (let i = 0; i < safeLine - 1; i += 1) {
+      offset += (lines[i]?.length || 0) + 1;
+    }
+    offset += Math.min(safeCol - 1, (lines[safeLine - 1] || '').length);
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = Math.max(0, Math.min(offset, value.length));
+    try {
+      const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 16;
+      textarea.scrollTop = Math.max(0, (safeLine - 1) * lineHeight - textarea.clientHeight / 3);
+    } catch (e) {
+    }
+  }
+
+  function resolveWGSLLocation(globalLoc, map) {
+    if (!globalLoc || !map || !Array.isArray(map.segments)) return null;
+    const line = Number(globalLoc.line) || 0;
+    const col = Number(globalLoc.col) || 1;
+    const seg = map.segments.find((s) => line >= s.startLine && line <= s.endLine);
+    if (!seg) return null;
+    return {
+      kind: seg.kind,
+      id: seg.id,
+      name: seg.name,
+      globalLine: line,
+      globalCol: col,
+      line: line - seg.startLine + 1,
+      col,
+    };
+  }
+
+  function navigateToLocation(loc) {
+    if (!loc) return;
+    if (loc.kind === 'shader') {
+      activateTab('shaders');
+      if (loc.id) {
+        selectedShaderId = loc.id;
+        const shader = shaders.find((s) => s.id === selectedShaderId);
+        renderShaderList();
+        renderShaderForm(shader || null);
+        renderShaderEditor(shader || null);
+      }
+      requestAnimationFrame(() => gotoTextAreaLocation(shaderEditor, loc.line, loc.col));
+      return;
+    }
+    if (loc.kind === 'function') {
+      activateTab('functions');
+      if (loc.id) {
+        selectedFunctionId = loc.id;
+        renderFunctionViews();
+      }
+      requestAnimationFrame(() => gotoTextAreaLocation(functionEditor, loc.line, loc.col));
+    }
+  }
+
+  async function getLintDevice() {
+    if (lintDevicePromise) return lintDevicePromise;
+    lintDevicePromise = (async () => {
+      if (!navigator.gpu) return null;
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) return null;
+      return adapter.requestDevice();
+    })();
+    return lintDevicePromise;
+  }
+
+  function scheduleLiveDiagnostics() {
+    if (diagnosticsTimer) window.clearTimeout(diagnosticsTimer);
+    diagnosticsTimer = window.setTimeout(() => {
+      runLiveDiagnostics();
+    }, 400);
+  }
+
+  async function runLiveDiagnostics() {
+    const built = buildCombinedWGSLWithMap();
+    lastLiveWGSLCode = built.code;
+    lastLiveWGSLMap = built.map;
+
+    const staticErrors = validateWGSLSyntaxOnly(built.code);
+    const messages = [];
+    staticErrors.forEach((message) => {
+      messages.push({ type: 'error', message, lineNum: null, linePos: null });
+    });
+
+    try {
+      const device = await getLintDevice();
+      if (device) {
+        const module = device.createShaderModule({ code: built.code });
+        const info = typeof module.getCompilationInfo === 'function'
+          ? await module.getCompilationInfo()
+          : { messages: [] };
+        (info.messages || []).forEach((m) => {
+          messages.push(m);
+        });
+
+        const bindingOffset = textures.length;
+        const primaryTextureName = textures[0]
+          ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
+          : null;
+        const primaryTextureType = textures[0]?.type || null;
+
+        const nonEmptyShaders = shaders
+          .filter((s) => (s?.code || '').trim().length > 0);
+
+        for (let i = 0; i < nonEmptyShaders.length; i += 1) {
+          const shader = nonEmptyShaders[i];
+          const builtSingle = buildSingleShaderWGSLWithMap(
+            shader,
+            bindingOffset,
+            primaryTextureName,
+            primaryTextureType,
+          );
+          const singleModule = device.createShaderModule({ code: builtSingle.code });
+          const singleInfo = typeof singleModule.getCompilationInfo === 'function'
+            ? await singleModule.getCompilationInfo()
+            : { messages: [] };
+          (singleInfo.messages || []).forEach((m) => {
+            const globalLoc = (m.lineNum && m.linePos)
+              ? { line: m.lineNum, col: m.linePos }
+              : null;
+            const resolved = resolveWGSLLocation(globalLoc, builtSingle.map);
+            messages.push({
+              type: m.type || 'info',
+              message: m.message || String(m),
+              lineNum: m.lineNum,
+              linePos: m.linePos,
+              __resolvedOverride: resolved,
+            });
+          });
+        }
+
+        const nonEmptyFunctions = functionsStore
+          .filter((f) => (f?.code || '').trim().length > 0);
+
+        for (let i = 0; i < nonEmptyFunctions.length; i += 1) {
+          const fn = nonEmptyFunctions[i];
+          const builtFn = buildSingleFunctionWGSLWithMap(
+            fn,
+            bindingOffset,
+            primaryTextureName,
+            primaryTextureType,
+          );
+          const fnModule = device.createShaderModule({ code: builtFn.code });
+          const fnInfo = typeof fnModule.getCompilationInfo === 'function'
+            ? await fnModule.getCompilationInfo()
+            : { messages: [] };
+          (fnInfo.messages || []).forEach((m) => {
+            const globalLoc = (m.lineNum && m.linePos)
+              ? { line: m.lineNum, col: m.linePos }
+              : null;
+            const resolved = resolveWGSLLocation(globalLoc, builtFn.map);
+            messages.push({
+              type: m.type || 'info',
+              message: m.message || String(m),
+              lineNum: m.lineNum,
+              linePos: m.linePos,
+              __resolvedOverride: resolved,
+            });
+          });
+        }
+      }
+    } catch (err) {
+      messages.push({ type: 'error', message: err?.message || String(err), lineNum: null, linePos: null });
+    }
+
+    const dedupe = new Set();
+    lastLiveWGSLMessages = messages
+      .filter(Boolean)
+      .map((m) => {
+        const globalLoc = (m.lineNum && m.linePos)
+          ? { line: m.lineNum, col: m.linePos }
+          : null;
+        const resolved = m.__resolvedOverride || resolveWGSLLocation(globalLoc, built.map);
+        return {
+          type: m.type || 'info',
+          message: m.message || String(m),
+          globalLoc,
+          resolved,
+        };
+      })
+      .filter((m) => {
+        const key = JSON.stringify({
+          t: m.type,
+          msg: m.message,
+          k: m.resolved?.kind || null,
+          id: m.resolved?.id || null,
+          l: m.resolved?.line || null,
+          c: m.resolved?.col || null,
+          gl: m.globalLoc?.line || null,
+          gc: m.globalLoc?.col || null,
+        });
+        if (dedupe.has(key)) return false;
+        dedupe.add(key);
+        return true;
+      });
+
+    renderDiagnosticsPanels();
+  }
+
+  function renderDiagnosticsPanel(container, entries, kind) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!entries.length) {
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+    entries.slice(0, 50).forEach((e) => {
+      const div = document.createElement('div');
+      const level = (e.type || '').toLowerCase().includes('warn') ? 'warn' : ((e.type || '').toLowerCase().includes('error') ? 'error' : 'info');
+      div.className = `diag ${level}`;
+      if (e.resolved && e.resolved.kind === kind) {
+        div.classList.add('clickable');
+        div.addEventListener('click', () => navigateToLocation(e.resolved));
+      }
+      const locText = (e.resolved && e.resolved.kind === kind)
+        ? `${e.resolved.name || ''} L${e.resolved.line} C${e.resolved.col}`.trim()
+        : '';
+      div.textContent = locText ? `${locText} - ${e.message}` : e.message;
+      container.appendChild(div);
+    });
+  }
+
+  function renderDiagnosticsPanels() {
+    const shaderId = selectedShaderId;
+    const fnId = selectedFunctionId;
+
+    shaderIdsWithErrors = new Set(
+      lastLiveWGSLMessages
+        .filter((m) => m.resolved && m.resolved.kind === 'shader')
+        .filter((m) => (m.type || '').toLowerCase().includes('error'))
+        .map((m) => m.resolved.id)
+        .filter(Boolean),
+    );
+    functionIdsWithErrors = new Set(
+      lastLiveWGSLMessages
+        .filter((m) => m.resolved && m.resolved.kind === 'function')
+        .filter((m) => (m.type || '').toLowerCase().includes('error'))
+        .map((m) => m.resolved.id)
+        .filter(Boolean),
+    );
+
+    const shaderEntriesAll = lastLiveWGSLMessages
+      .filter((m) => m.resolved && m.resolved.kind === 'shader');
+    const functionEntriesAll = lastLiveWGSLMessages
+      .filter((m) => m.resolved && m.resolved.kind === 'function');
+    const shaderEntriesSelected = shaderId
+      ? shaderEntriesAll.filter((m) => m.resolved.id === shaderId)
+      : shaderEntriesAll;
+    const functionEntriesSelected = fnId
+      ? functionEntriesAll.filter((m) => m.resolved.id === fnId)
+      : functionEntriesAll;
+    renderDiagnosticsPanel(shaderDiagnostics, shaderEntriesAll, 'shader');
+    renderDiagnosticsPanel(functionDiagnostics, functionEntriesAll, 'function');
+
+    const shaderErrorLines = new Set(
+      shaderEntriesSelected
+        .filter((e) => (e.type || '').toLowerCase().includes('error'))
+        .map((e) => e.resolved?.line)
+        .filter((n) => Number.isFinite(n)),
+    );
+    const functionErrorLines = new Set(
+      functionEntriesSelected
+        .filter((e) => (e.type || '').toLowerCase().includes('error'))
+        .map((e) => e.resolved?.line)
+        .filter((n) => Number.isFinite(n)),
+    );
+    renderLineNumbers(shaderEditor, shaderGutter, shaderErrorLines);
+    renderLineNumbers(functionEditor, functionGutter, functionErrorLines);
+
+    updateListErrorIndicators();
+  }
 
   setPreviewValue(0,0,null);
 
@@ -1198,29 +2878,39 @@ document.addEventListener('DOMContentLoaded', () => {
   // ********************
 
   compileBtn.addEventListener('click', async () => { // COMPILE BUTTON
-    if (compileBtn.style.color === 'grey') return;
-    isCompiled = true; updateButtons();
-    const wgsl = buildCombinedWGSL();
+    if (compileBtn.disabled) return;
+    isCompiling = true;
+    updateButtons();
+    const built = buildCombinedWGSLWithMap();
+    const wgsl = built.code;
     lastCompiledWGSL = wgsl;
+    lastWGSLMap = built.map;
     //alert(wgsl);
     const errors = validateWGSL(wgsl);
     if (errors.length === 0) {
-      logConsole(t('log.compile.staticOk'), 'compile');
-      isCompiled = true; updateButtons();
+      logConsole('Compilation statique : OK.', 'compile');
+      updateButtons();
     } else {
       errors.forEach((err) => logConsole(err, 'compile'));
-      isCompiled = false; updateButtons();
+      isCompiled = false;
+      isCompiling = false;
+      updateButtons();
       return;
     }
-    const result = await compileWGSL(wgsl);
-    if (result && result.module) {
-      buildComputePipelines(result.device, result.module);
-      markBindingsDirty(); // nouveau module/pipelines => regen bind group
+    try {
+      const result = await compileWGSL(wgsl);
+      if (result && result.module) {
+        buildComputePipelines(result.device, result.module);
+        markBindingsDirty(); // nouveau module/pipelines => regen bind group
+      }
+    } finally {
+      isCompiling = false;
+      updateButtons();
     }
   });
 
   stepBtn.addEventListener('click', async () => { // STEP BUTTON
-    if (stepBtn.style.color === 'grey') return;
+    if (stepBtn.disabled) return;
     playSimulationStep();
     isRunning = true;
     isPaused = true;
@@ -1228,37 +2918,76 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   runBtn.addEventListener('click', async () => { // RUN BUTTON
-    if (runBtn.style.color === 'grey') return;
+    if (runBtn.disabled) return;
     if (isRunning && !isPaused) {
-      logConsole(t('log.run.alreadyRunning'), 'run');
+      logConsole('Exécution déjà en cours.', 'run');
       return;
     }
     isRunning = true;
     isPaused = false;
     updateButtons();
 
-    logConsole(t('log.run.started'), 'run');
+    logConsole('Boucle run démarrée.', 'run');
     startTimer();
   });
 
+  if (runSpeedSlider) {
+    runSpeedSlider.addEventListener('input', () => setRunSpeed(runSpeedSlider.value));
+  }
+
+  if (fsRunSpeedSlider) {
+    fsRunSpeedSlider.addEventListener('input', () => setRunSpeed(fsRunSpeedSlider.value));
+  }
+
+  if (fsCompileBtn) {
+    fsCompileBtn.addEventListener('click', () => compileBtn?.click());
+  }
+
+  if (previewFullscreenBtn) {
+    previewFullscreenBtn.addEventListener('click', () => setPreviewFullscreen(true));
+  }
+
+  if (fsExitFullscreenBtn) {
+    fsExitFullscreenBtn.addEventListener('click', () => setPreviewFullscreen(false));
+  }
+
+  if (fsStepBtn) fsStepBtn.addEventListener('click', () => stepBtn?.click());
+  if (fsRunBtn) fsRunBtn.addEventListener('click', () => runBtn?.click());
+  if (fsPauseBtn) fsPauseBtn.addEventListener('click', () => pauseBtn?.click());
+  if (fsStopBtn) fsStopBtn.addEventListener('click', () => stopBtn?.click());
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && previewPanel && previewPanel.classList.contains('fullscreen')) {
+      setPreviewFullscreen(false);
+    }
+  });
+
+  try {
+    const savedSpeed = Number(localStorage.getItem('wgstudio.runSpeed'));
+    if (Number.isFinite(savedSpeed) && savedSpeed > 0) setRunSpeed(savedSpeed);
+    else setRunSpeed(60);
+  } catch (e) {
+    setRunSpeed(60);
+  }
+
   pauseBtn.addEventListener('click', () => { // PAUSE BUTTON
-    if (pauseBtn.style.color === 'grey') return;
+    if (pauseBtn.disabled) return;
     console.log('pause click');
     if (!isRunning) {
-      logConsole(t('log.pause.none'), 'pause');
+      logConsole('Rien à mettre en pause (pas de run en cours).', 'pause');
       return;
     }
     if (isPaused) {
-      logConsole(t('log.pause.already'), 'pause');
+      logConsole('Déjà en pause. Cliquez sur Run pour reprendre.', 'pause');
       return;
     }
     isPaused = true; updateButtons();
     stopTimer();
-    logConsole(t('log.pause.paused'), 'pause');
+    logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
   });
 
   stopBtn.addEventListener('click', () => { // STOP BUTTON
-    if (stopBtn.style.color === 'grey') return;
+    if (stopBtn.disabled) return;
     isRunning  = false;
     isPaused   = false;
     isCompiled = false;
@@ -1268,7 +2997,7 @@ document.addEventListener('DOMContentLoaded', () => {
     stopTimer();
     updateButtons();
     resetGPUState();
-    logConsole(t('log.stop.reset'), 'stop');
+    logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
   });
 
   if (saveBtn) {
@@ -1284,7 +3013,7 @@ document.addEventListener('DOMContentLoaded', () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      logConsole(t('log.save.ok'), 'save');
+      logConsole('Projet sauvegardé.', 'save');
     });
   }
 
@@ -1301,9 +3030,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           const data = JSON.parse(reader.result);
           loadProject(data);
-          logConsole(t('log.load.ok', { file: file.name }), 'load');
+          logConsole(`Projet chargé : ${file.name}`, 'load');
         } catch (err) {
-          logConsole(t('log.load.failed', { error: err.message || err }), 'load');
+          logConsole(`Échec chargement : ${err.message || err}`, 'load');
         }
       };
       reader.readAsText(file);
@@ -1312,7 +3041,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (newProjectBtn) {
     newProjectBtn.addEventListener('click', () => {
-      const ok = window.confirm(t('project.confirm.new'));
+      const ok = window.confirm('Creer un nouveau projet ? Les donnees non sauvegardees seront perdues.');
       if (!ok) return;
       textures = [];
       shaders = [];
@@ -1333,7 +3062,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderFunctionList();
       renderPipelineViews();
       renderPreview();
-      logConsole(t('log.project.new'), 'project');
+      logConsole('Nouveau projet créé.', 'project');
     });
   }
 
@@ -1357,8 +3086,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // lancer le timer
   function startTimer() {
+    resetRunSpeedMeasure();
+    if (runUncapped) {
+      if (!isSimulationRunning) playSimulationStep();
+      return;
+    }
     if (timerId === null) {
-      timerId = setInterval(play, 1);
+      timerId = setInterval(play, runIntervalMs);
     }
   }
 
@@ -1367,6 +3101,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (timerId !== null) {
       clearInterval(timerId);
       timerId = null;
+    }
+    if (runRafId) {
+      cancelAnimationFrame(runRafId);
+      runRafId = 0;
     }
   }
 
@@ -1397,17 +3135,45 @@ document.addEventListener('DOMContentLoaded', () => {
       passEncoderCompute.dispatchWorkgroups(entry.x, entry.y, entry.z);
     });
     passEncoderCompute.end();
-    readTasks.forEach((task) => {
-      commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
-    });
+
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const shouldReadback = !runUncapped || (now - lastRunReadbackAt) >= runReadbackIntervalMs;
+    if (shouldReadback) {
+      lastRunReadbackAt = now;
+      readTasks.forEach((task) => {
+        commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
+      });
+    }
+
     currentDevice.queue.submit([commandEncoder.finish()]);
     simulationSteps += 1;
-    renderStepCounter();
+    if (!runUncapped) {
+      renderStepCounter();
+    } else {
+      const ts = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      if ((ts - lastRunUiUpdateAt) >= runUiIntervalMs) {
+        lastRunUiUpdateAt = ts;
+        renderStepCounter();
+        updateMeasuredRunSpeedLabel();
+      }
+    }
     updateStepCounterBuffer();
     updateMouseUniformBuffer();
     updateKeyUniformBuffer();
     updateMouseBtnUniformBuffer();
-    handleReadbacks(readTasks);
+
+    if (!shouldReadback && runUncapped) {
+      currentDevice.queue.onSubmittedWorkDone()
+        .catch(() => {})
+        .finally(() => {
+          isSimulationRunning = false;
+          noteStepCompleted();
+          scheduleNextUncappedStep();
+        });
+      return;
+    }
+
+    handleReadbacks(shouldReadback ? readTasks : []);
   }
 
 
@@ -1422,40 +3188,37 @@ document.addEventListener('DOMContentLoaded', () => {
   // ********************
 
   async function updateButtons() {
-    if (isCompiled == true) { // COMPILED **********
-      compileBtn.style.color = 'grey';
-      if (isRunning == true) { // RUNNING >>>>>>
-        if (isPaused == true) { // PAUSED     :::
-          stepBtn.style.color    = 'white';   
-          runBtn.style.color     = 'white';       
-          pauseBtn.style.color   = 'grey';
-          stopBtn.style.color    = 'red';          
-        } else {                // NOT PAUSED OOO
-          stepBtn.style.color    = 'grey';   
-          runBtn.style.color     = 'grey';       
-          pauseBtn.style.color   = 'white';
-          stopBtn.style.color    = 'red';
-        }
-      } else {                 // NOT RUNNING |||
-        if (isPaused == true) { // PAUSED     :::
-          stepBtn.style.color     = 'white';   
-          runBtn.style.color      = 'white';
-          pauseBtn.style.color    = 'grey';
-          stopBtn.style.color     = 'red';
-        } else {                 // NOT PAUSED OOO
-            stepBtn.style.color    = 'white';   
-            runBtn.style.color     = 'white';
-            pauseBtn.style.color   = 'grey';
-            stopBtn.style.color    = 'red';
-        }
-      }
-    } else {                   // NOT COMPILED ********
-      compileBtn.style.color = 'white';
-      stepBtn.style.color    = 'grey';
-      runBtn.style.color     = 'grey';
-      pauseBtn.style.color   = 'grey';
-      stopBtn.style.color    = 'grey';
+    const setActionButton = (btn, enabled, visible) => {
+      if (!btn) return;
+      btn.disabled = !enabled;
+      btn.classList.toggle('hidden', !visible);
+    };
+
+    const canStop = Boolean(isCompiled);
+    const canPause = Boolean(isCompiled && isRunning && !isPaused);
+    const canStep = Boolean(isCompiled && (!isRunning || isPaused));
+    const canRun = Boolean(isCompiled && (!isRunning || isPaused));
+
+    const actionButtonsVisible = Boolean(isCompiled && !isCompiling);
+
+    if (compileBtn) {
+      compileBtn.disabled = Boolean(isCompiled || isCompiling);
     }
+
+    if (fsCompileBtn) {
+      fsCompileBtn.disabled = Boolean(isCompiled || isCompiling);
+      fsCompileBtn.classList.toggle('hidden', false);
+    }
+
+    setActionButton(stepBtn, canStep, actionButtonsVisible);
+    setActionButton(runBtn, canRun, actionButtonsVisible);
+    setActionButton(pauseBtn, canPause, actionButtonsVisible);
+    setActionButton(stopBtn, canStop, actionButtonsVisible);
+
+    setActionButton(fsStepBtn, canStep, actionButtonsVisible);
+    setActionButton(fsRunBtn, canRun, actionButtonsVisible);
+    setActionButton(fsPauseBtn, canPause, actionButtonsVisible);
+    setActionButton(fsStopBtn, canStop, actionButtonsVisible);
 
   }
 
@@ -1575,32 +3338,32 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!bindingsDirty && prep) return prep;
     bindingMetas = new Map();
     if (!currentDevice) {
-      logConsole(t('log.run.noDevice'), 'run');
+      logConsole('Aucun device WebGPU initialisé. Compile d’abord.', 'run');
       return null;
     }
     if (!computePipelines.length) {
-      logConsole(t('log.run.noPipeline'), 'run');
+      logConsole('Aucun pipeline compute disponible. Compile d’abord.', 'run');
       return null;
     }
     const { entries, readTasks } = prepareBindingBuffers(currentDevice, lastCompiledWGSL);
     if (!entries.length) {
-      logConsole(t('log.run.noResources'), 'run');
+      logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
       return null;
     }
     if (!validateLoopStructure(pipeline)) {
-      logConsole(t('log.run.invalidLoop'), 'run');
+      logConsole('Structure de boucle invalide : vérifiez vos Début/Fin.', 'run');
       return null;
     }
     const dispatchList = expandPipeline(pipeline)
       .map((pipe, idx) => {
         const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
         if (!pipeEntry) {
-          logConsole(t('log.run.pipelineMissing', { index: idx + 1 }), 'run');
+          logConsole(`Pipeline ${idx + 1}: pipeline introuvable.`, 'run');
           return null;
         }
         const layout = pipeEntry.pipeline.getBindGroupLayout(0);
         if (!layout) {
-          logConsole(t('log.run.layoutMissing', { index: idx + 1 }), 'run');
+          logConsole(`Pipeline ${idx + 1}: layout introuvable pour le pipeline.`, 'run');
           return null;
         }
         const bindGroup = currentDevice.createBindGroup({ layout, entries });
@@ -1624,6 +3387,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     let pending = readTasks.length;
     if (!pending) {
       isSimulationRunning = false;
+      const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const dt = Math.max(1, now - runSpeedMeasureT0);
+      const ds = simulationSteps - runSpeedMeasureSteps0;
+      if (ds > 0) {
+        runSpeedMeasured = (ds * 1000) / dt;
+        updateMeasuredRunSpeedLabel();
+        if (dt >= 250) {
+          runSpeedMeasureT0 = now;
+          runSpeedMeasureSteps0 = simulationSteps;
+        }
+      }
+      if (runUncapped && isRunning && !isPaused) scheduleNextUncappedStep();
       return;
     }
     readTasks.forEach((task) => {
@@ -1637,7 +3412,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           updateTextureValuesFromFlat(task.tex, copy);
         })
         .catch((mapErr) => {
-          logConsole(t('log.run.bufferReadFailed', { error: mapErr.message || mapErr }), 'run');
+          logConsole(`Lecture buffer échouée: ${mapErr.message || mapErr}`, 'run');
         })
         .finally(() => {
           pending -= 1;
@@ -1645,6 +3420,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
             renderPreview();
             renderTextureList();
             isSimulationRunning = false;
+            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            const dt = Math.max(1, now - runSpeedMeasureT0);
+            const ds = simulationSteps - runSpeedMeasureSteps0;
+            if (ds > 0) {
+              runSpeedMeasured = (ds * 1000) / dt;
+              updateMeasuredRunSpeedLabel();
+              if (dt >= 250) {
+                runSpeedMeasureT0 = now;
+                runSpeedMeasureSteps0 = simulationSteps;
+              }
+            }
+            if (runUncapped && isRunning && !isPaused) scheduleNextUncappedStep();
           }
         });
     });
@@ -1694,13 +3481,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const loopStart = {
         id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `loop-start-${Date.now()}`,
         type: 'loopStart',
-        name: t('pipeline.loopStartName'),
+        name: t('pipeline.loop_start_name', null, 'Début boucle'),
         repeat: 2,
       };
       pipeline.splice(insertAt, 0, loopStart);
       if (!validateLoopStructure(pipeline, true)) {
         pipeline.splice(insertAt, 1);
-        logConsole(t('log.pipeline.invalidStart'), 'pipeline');
+        logConsole('Boucle invalide (Début sans Fin).', 'pipeline');
         return;
       }
       selectedPipeId = loopStart.id;
@@ -1716,12 +3503,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const loopEnd = {
         id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `loop-end-${Date.now()}`,
         type: 'loopEnd',
-        name: t('pipeline.loopEndName'),
+        name: t('pipeline.loop_end_name', null, 'Fin boucle'),
       };
       pipeline.splice(insertAt, 0, loopEnd);
       if (!validateLoopStructure(pipeline, true)) {
         pipeline.splice(insertAt, 1);
-        logConsole(t('log.pipeline.invalidEnd'), 'pipeline');
+        logConsole('Boucle invalide (Fin sans Début ou intercalée).', 'pipeline');
         return;
       }
       selectedPipeId = loopEnd.id;
@@ -1763,11 +3550,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       };
     } else if (pipelinePanelTitle) {
       pipelinePanelTitle.textContent = pipe.type === 'loopEnd'
-        ? t('pipeline.loopEndTitle')
-        : t('pipeline.pipelineTitle');
+        ? t('pipeline.panel.loop_end_selected', null, 'Fin boucle sélectionné')
+        : t('pipeline.panel.pipeline_selected', null, 'Pipeline sélectionnée');
     }
     renderPipelineViews();
   });
+
+  // Masquer le bouton Appliquer pour les fins de boucle (géré dans renderPipelineForm)
+  const pipelineSubmitBtn = pipelineForm.querySelector('button[type="submit"]');
 
   // Functions events
   addFunctionBtn.addEventListener('click', () => {
@@ -1848,6 +3638,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!fn) return;
     fn.code = e.target.value;
     updateFunctionStats(fn.code);
+    scheduleLiveDiagnostics();
+    renderLineNumbers(functionEditor, functionGutter);
   });
   enableTabIndent(functionEditor);
 
@@ -1957,7 +3749,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   });
 
   zSlice.addEventListener('input', () => {
-    setSliceLabel(zSlice.value);
+    sliceLabel.textContent = `Z = ${zSlice.value}`;
+    if (fsZSlice && zSlice) {
+      fsZSlice.max = zSlice.max;
+      fsZSlice.value = zSlice.value;
+      if (fsSliceLabel) fsSliceLabel.textContent = `Z = ${fsZSlice.value}`;
+    }
+    updateButtons();
+    schedulePreviewResize();
     const tex = textures.find((t) => t.id === selectedTextureId);
     if (tex) {
       const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
@@ -2017,8 +3816,22 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
     updateShaderLines(shader.code);
     updateTextureDeclarationsEditor();
+    scheduleLiveDiagnostics();
+    renderLineNumbers(shaderEditor, shaderGutter);
   });
   enableTabIndent(shaderEditor);
+
+  if (shaderEditor && shaderGutter) {
+    shaderEditor.addEventListener('scroll', () => {
+      shaderGutter.scrollTop = shaderEditor.scrollTop;
+    });
+  }
+
+  if (functionEditor && functionGutter) {
+    functionEditor.addEventListener('scroll', () => {
+      functionGutter.scrollTop = functionEditor.scrollTop;
+    });
+  }
 
   function buildTextureFromForm() {
     const formData = new FormData(textureForm);
@@ -2154,7 +3967,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return {
       type: 'step',
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `pipe-${Date.now()}`,
-      name: t('pipeline.defaultName', { index: idx }),
+      name: `Pipeline ${idx}`,
       shaderId,
       dispatch: { x: 8, y: 4, z: 1 },
     };
@@ -2199,7 +4012,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!shaders.length) {
       const empty = document.createElement('div');
       empty.className = 'list-item';
-      empty.textContent = t('pipeline.emptyList');
+      empty.textContent = t('pipeline.no_shader_hint', null, 'Ajoutez un compute shader pour le pipeline.');
       pipelineList.appendChild(empty);
       return;
     }
@@ -2221,7 +4034,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function renderPipelineTimeline() {
     pipelineTimeline.innerHTML = '';
     if (!pipeline.length) {
-      pipelineTimeline.innerHTML = `<p class="eyebrow">${t('pipeline.emptyTimeline')}</p>`;
+      pipelineTimeline.innerHTML = `<p class="eyebrow">${t('pipeline.empty_timeline', null, 'Aucun Pipeline dans la Pass.')}</p>`;
       return;
     }
     pipeline.forEach((pipe, index) => {
@@ -2238,11 +4051,24 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const meta = document.createElement('div');
       meta.className = 'meta';
       if (pipe.type === 'loopStart') {
-        meta.textContent = `${t('pipeline.repeats')} : ${pipe.repeat ?? 1}`;
+        meta.textContent = t(
+          'pipeline.timeline.repetitions',
+          { count: pipe.repeat ?? 1 },
+          `Répétitions : ${pipe.repeat ?? 1}`,
+        );
       } else if (pipe.type === 'loopEnd') {
-        meta.textContent = t('pipeline.loopEndMeta');
+        meta.textContent = t('pipeline.timeline.loop_end', null, 'Fin boucle');
       } else {
-        meta.textContent = `${pipelineShaderLabel(pipe.shaderId)} · Dispatch ${pipe.dispatch?.x ?? 1}×${pipe.dispatch?.y ?? 1}×${pipe.dispatch?.z ?? 1}`;
+        meta.textContent = t(
+          'pipeline.timeline.dispatch',
+          {
+            shader: pipelineShaderLabel(pipe.shaderId),
+            x: pipe.dispatch?.x ?? 1,
+            y: pipe.dispatch?.y ?? 1,
+            z: pipe.dispatch?.z ?? 1,
+          },
+          `${pipelineShaderLabel(pipe.shaderId)} · Dispatch ${pipe.dispatch?.x ?? 1}×${pipe.dispatch?.y ?? 1}×${pipe.dispatch?.z ?? 1}`,
+        );
       }
       content.appendChild(title);
       content.appendChild(meta);
@@ -2286,11 +4112,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
     if (pipelinePanelTitle) {
       if (isLoopStart) {
-        pipelinePanelTitle.textContent = t('pipeline.loopStartTitle');
+        pipelinePanelTitle.textContent = t('pipeline.panel.loop_start_selected', null, 'Début boucle sélectionné');
       } else if (isLoopEnd) {
-        pipelinePanelTitle.textContent = t('pipeline.loopEndTitle');
+        pipelinePanelTitle.textContent = t('pipeline.panel.loop_end_selected', null, 'Fin boucle sélectionné');
       } else {
-        pipelinePanelTitle.textContent = t('pipeline.pipelineTitle');
+        pipelinePanelTitle.textContent = t('pipeline.panel.pipeline_selected', null, 'Pipeline sélectionnée');
       }
     }
     if (pipelineSubmitBtn) {
@@ -2301,7 +4127,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (isLoopStart) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = t('pipeline.loopStartOption');
+      opt.textContent = t('pipeline.select.loop_start', null, 'Boucle (début)');
       pipelineShaderSelect.appendChild(opt);
       pipelineShaderSelect.disabled = true;
       pipelineForm.pDispatchX.value = pipe.repeat || 1;
@@ -2312,7 +4138,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     } else if (isLoopEnd) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = t('pipeline.loopEndOption');
+      opt.textContent = t('pipeline.select.loop_end', null, 'Boucle (fin)');
       pipelineShaderSelect.appendChild(opt);
       pipelineShaderSelect.disabled = true;
       pipelineForm.pDispatchX.value = '';
@@ -2322,7 +4148,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (!shaders.length) {
         const opt = document.createElement('option');
         opt.value = '';
-        opt.textContent = t('pipeline.noShaderOption');
+        opt.textContent = t('pipeline.select.no_shader', null, 'Aucun compute shader disponible');
         pipelineShaderSelect.appendChild(opt);
         pipelineShaderSelect.disabled = true;
       } else {
@@ -2355,9 +4181,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function pipelineShaderLabel(shaderId) {
     const shader = shaders.find((s) => s.id === shaderId);
-    return shader
-      ? t('pipeline.shaderLabel', { name: shader.name })
-      : t('pipeline.shaderMissingLabel');
+    return shader ? `Shader : ${shader.name}` : 'Shader manquant';
   }
 
   function movePipe(delta) {
@@ -2378,7 +4202,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const idx = functionsStore.length + 1;
     return {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `fn-${Date.now()}`,
-      name: t('functions.defaultName', { index: idx }),
+      name: `Bibliothèque ${idx}`,
       code: defaultFunctionCode(),
     };
   }
@@ -2401,7 +4225,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!functionsStore.length) {
       const empty = document.createElement('div');
       empty.className = 'list-item';
-      empty.textContent = t('functions.emptyList');
+      empty.textContent = t('functions.empty', null, 'Aucune bibliothèque. Ajoutez-en une.');
       functionList.appendChild(empty);
       removeFunctionBtn.disabled = true;
       duplicateFunctionBtn.disabled = true;
@@ -2412,16 +4236,20 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     functionsStore.forEach((fn) => {
       const item = document.createElement('div');
       item.className = `list-item ${fn.id === selectedFunctionId ? 'active' : ''}`;
+      item.dataset.id = fn.id;
+      if (functionIdsWithErrors.has(fn.id)) item.classList.add('has-error');
       const title = document.createElement('div');
       title.textContent = fn.name;
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = formatLineCount(fn.code.split(/\r?\n/).length);
+      meta.textContent = `${fn.code.split(/\r?\n/).length} lignes`;
       item.appendChild(title);
       item.appendChild(meta);
       item.addEventListener('click', () => {
         selectedFunctionId = fn.id;
         renderFunctionViews();
+        const loc = firstErrorLocation('function', fn.id);
+        if (loc) navigateToLocation(loc);
       });
       functionList.appendChild(item);
     });
@@ -2443,11 +4271,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       functionEditor.value = '';
       functionEditor.disabled = true;
       updateFunctionStats('');
+      renderDiagnosticsPanels();
+      renderLineNumbers(functionEditor, functionGutter);
       return;
     }
     functionEditor.disabled = false;
     functionEditor.value = fn.code;
     updateFunctionStats(fn.code);
+    scheduleLiveDiagnostics();
+    renderLineNumbers(functionEditor, functionGutter);
   }
 
   function renderFunctionViews() {
@@ -2462,7 +4294,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function updateFunctionStats(code) {
     const lines = code ? code.split(/\r?\n/).length : 0;
     const chars = code ? code.length : 0;
-    functionLines.textContent = formatLineCount(lines);
+    if (functionLines) {
+      functionLines.textContent = t('stats.lines_count', { count: lines }, `${lines} ${lines > 1 ? 'lignes' : 'ligne'}`);
+    }
     statLines.textContent = lines;
     statChars.textContent = chars;
   }
@@ -2491,19 +4325,23 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return `_${trimmed || fallback}`;
   }
 
-  function logConsole(message, meta = '') {
+  function logConsole(message, meta = '', loc = null) {
     const time = new Date().toLocaleTimeString();
-    consoleMessages.push({ time, message, meta });
+    const resolved = resolveWGSLLocation(loc, lastWGSLMap);
+    consoleMessages.push({ time, message, meta, loc, resolved });
+    if (isConsoleError(message, meta)) setConsoleTabHasError(true);
     renderConsole();
   }
 
   function renderConsole() {
     if (!consoleArea) return;
     consoleArea.innerHTML = '';
+    const hasErrors = consoleMessages.some((m) => isConsoleError(m.message, m.meta));
+    setConsoleTabHasError(hasErrors);
     if (!consoleMessages.length) {
       const empty = document.createElement('div');
       empty.className = 'console-line';
-      empty.textContent = t('console.empty');
+      empty.textContent = t('console.empty', null, 'Aucune erreur pour le moment.');
       consoleArea.appendChild(empty);
       return;
     }
@@ -2512,49 +4350,294 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       let level = 'info';
       const metaLower = (msg.meta || '').toLowerCase();
       const msgLower = (msg.message || '').toLowerCase();
-      if (metaLower.includes('error') || metaLower.includes('err') || (msgLower.includes('wgsl') && (msgLower.includes('erreur') || msgLower.includes('error')))) level = 'error';
+      if (isConsoleError(msg.message, msg.meta)) level = 'error';
       else if (metaLower.includes('warn')) level = 'warn';
       line.className = `console-line ${level}`;
+      const targetLoc = msg.resolved;
+      if (targetLoc) {
+        line.classList.add('clickable');
+        line.addEventListener('click', () => navigateToLocation(targetLoc));
+      }
       const metaEl = document.createElement('span');
       metaEl.className = 'meta';
       const metaText = `[${msg.time}] ${msg.meta || ''}`.trim();
       metaEl.textContent = metaText;
       line.appendChild(metaEl);
       const messageEl = document.createElement('span');
-      messageEl.textContent = ` ${msg.message}`;
+      const locText = targetLoc
+        ? ` [${targetLoc.kind === 'shader'
+          ? t('console.location.shader', null, 'Shader')
+          : t('console.location.function', null, 'Fonction')}: ${targetLoc.name} L${targetLoc.line} C${targetLoc.col}]`
+        : '';
+      messageEl.textContent = ` ${msg.message}${locText}`;
       line.appendChild(messageEl);
       consoleArea.appendChild(line);
     });
   }
 
-  function buildCombinedWGSL() {
-    const fnSection = functionsStore
-      .map((f) => f.code.trim())
-      .filter(Boolean)
-      .join('\n\n');
+  function buildShaderSectionWithMap(bindingOffset, primaryTextureName, primaryTextureType) {
+    const declSeen = new Set();
+    const segments = [];
+    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
+    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
+
+    let currentLine = 1;
+    let code = '';
+
+    const append = (txt) => {
+      const t = normalizeNewlines(txt);
+      code += t;
+      currentLine += countNewlines(t);
+    };
+
+    const nonEmptyShaders = shaders
+      .map((s) => ({ s, code: normalizeNewlines(normalizeComputeCode(
+        s.code,
+        bindingOffset,
+        declSeen,
+        primaryTextureName,
+        primaryTextureType,
+      )) }))
+      .filter((x) => (x.code || '').trim().length > 0);
+
+    nonEmptyShaders.forEach(({ s, code: shaderCode }, idx) => {
+      const startLine = currentLine;
+      const linesCount = shaderCode.split('\n').length;
+      const endLine = startLine + linesCount - 1;
+      segments.push({ kind: 'shader', id: s.id, name: s.name, startLine, endLine });
+      append(shaderCode);
+      if (idx < nonEmptyShaders.length - 1) {
+        append('\n\n');
+      }
+    });
+
+    return { code, segments };
+  }
+
+  function buildCombinedWGSLWithMap() {
+    const segments = [];
+    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
+    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
+
+    let currentLine = 1;
+    let code = '';
+
+    const append = (txt) => {
+      const t = normalizeNewlines(txt);
+      code += t;
+      currentLine += countNewlines(t);
+    };
+
+    const pushSegment = (kind, id, name, txt) => {
+      const t = normalizeNewlines(txt);
+      if (!t.trim()) return;
+      const startLine = currentLine;
+      const linesCount = t.split('\n').length;
+      const endLine = startLine + linesCount - 1;
+      segments.push({ kind, id, name, startLine, endLine });
+      append(t);
+    };
+
+    append('// --- Fonctions ---\n');
+    if (functionsStore.length) {
+      const nonEmpty = functionsStore.filter((f) => (f.code || '').trim().length > 0);
+      if (nonEmpty.length) {
+        nonEmpty.forEach((f, idx) => {
+          pushSegment('function', f.id, f.name, f.code || '');
+          if (idx < nonEmpty.length - 1) append('\n\n');
+        });
+        append('\n\n');
+      } else {
+        append(`// (${t('wgsl.none_function', null, 'aucune fonction')})\n\n`);
+      }
+    } else {
+      append(`// (${t('wgsl.none_function', null, 'aucune fonction')})\n\n`);
+    }
+
+    append('// --- Textures ---\n');
+    const textureSection = buildTextureDeclarationsWGSL();
+    if ((textureSection || '').trim()) {
+      pushSegment('system', 'textures', 'textures', textureSection);
+      append('\n\n');
+    } else {
+      append(`// (${t('wgsl.none_texture', null, 'aucune texture')})\n\n`);
+    }
+
+    append('// --- Système ---\n');
 
     const bindingOffset = textures.length;
     const primaryTextureName = textures[0]
       ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
       : null;
     const primaryTextureType = textures[0]?.type || null;
-    const textureSection = buildTextureDeclarationsWGSL();
-    const shaderSection = buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType);
-    const stepSection = buildStepDeclarationWGSL(textureSection, shaderSection);
 
-    return [
-      '// --- Fonctions ---',
-      fnSection || '// (aucune fonction)',
+    const shaderSectionBuilt = buildShaderSectionWithMap(bindingOffset, primaryTextureName, primaryTextureType);
+    const stepSection = buildStepDeclarationWGSL(textureSection, shaderSectionBuilt.code);
+    pushSegment('system', 'step', 'system', stepSection);
+    append('\n\n');
+
+    append('// --- Compute Shaders ---\n');
+    if ((shaderSectionBuilt.code || '').trim()) {
+      const shaderStartLine = currentLine;
+      append(shaderSectionBuilt.code);
+      shaderSectionBuilt.segments.forEach((seg) => {
+        segments.push({
+          ...seg,
+          startLine: seg.startLine + shaderStartLine - 1,
+          endLine: seg.endLine + shaderStartLine - 1,
+        });
+      });
+    } else {
+      append('// (aucun compute shader)');
+    }
+
+    return { code, map: { segments } };
+  }
+
+  function buildSingleShaderWGSLWithMap(shader, bindingOffset, primaryTextureName, primaryTextureType) {
+    const segments = [];
+    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
+    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
+
+    let currentLine = 1;
+    let code = '';
+
+    const append = (txt) => {
+      const t = normalizeNewlines(txt);
+      code += t;
+      currentLine += countNewlines(t);
+    };
+
+    const pushSegment = (kind, id, name, txt) => {
+      const t = normalizeNewlines(txt);
+      if (!t.trim()) return;
+      const startLine = currentLine;
+      const linesCount = t.split('\n').length;
+      const endLine = startLine + linesCount - 1;
+      segments.push({ kind, id, name, startLine, endLine });
+      append(t);
+    };
+
+    append('// --- Textures ---\n');
+    const textureSection = buildTextureDeclarationsWGSL();
+    if ((textureSection || '').trim()) {
+      pushSegment('system', 'textures', 'textures', textureSection);
+      append('\n\n');
+    } else {
+      append(`// (${t('wgsl.none_texture', null, 'aucune texture')})\n\n`);
+    }
+
+    append('// --- Système ---\n');
+    const declSeen = new Set();
+    const shaderCode = normalizeComputeCode(
+      shader?.code || '',
+      bindingOffset,
+      declSeen,
+      primaryTextureName,
+      primaryTextureType,
+    );
+    const stepSection = buildStepDeclarationWGSL(textureSection, shaderCode);
+    pushSegment('system', 'step', 'system', stepSection);
+    append('\n\n');
+
+    append('// --- Compute Shaders ---\n');
+    if ((shaderCode || '').trim()) {
+      pushSegment('shader', shader?.id, shader?.name, shaderCode);
+      append('\n\n');
+    } else {
+      append('// (aucun compute shader)');
+      append('\n\n');
+    }
+
+    append('// --- Fonctions ---\n');
+    if (functionsStore.length) {
+      const nonEmpty = functionsStore.filter((f) => (f.code || '').trim().length > 0);
+      if (nonEmpty.length) {
+        nonEmpty.forEach((f, idx) => {
+          pushSegment('function', f.id, f.name, f.code || '');
+          if (idx < nonEmpty.length - 1) append('\n\n');
+        });
+      } else {
+        append(`// (${t('wgsl.none_function', null, 'aucune fonction')})`);
+      }
+    } else {
+      append(`// (${t('wgsl.none_function', null, 'aucune fonction')})`);
+    }
+
+    return { code, map: { segments } };
+  }
+
+  function buildSingleFunctionWGSLWithMap(fn, bindingOffset, primaryTextureName, primaryTextureType) {
+    const segments = [];
+    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
+    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
+
+    let currentLine = 1;
+    let code = '';
+
+    const append = (txt) => {
+      const t = normalizeNewlines(txt);
+      code += t;
+      currentLine += countNewlines(t);
+    };
+
+    const pushSegment = (kind, id, name, txt) => {
+      const t = normalizeNewlines(txt);
+      if (!t.trim()) return;
+      const startLine = currentLine;
+      const linesCount = t.split('\n').length;
+      const endLine = startLine + linesCount - 1;
+      segments.push({ kind, id, name, startLine, endLine });
+      append(t);
+    };
+
+    append('// --- Textures ---\n');
+    const textureSection = buildTextureDeclarationsWGSL();
+    if ((textureSection || '').trim()) {
+      pushSegment('system', 'textures', 'textures', textureSection);
+      append('\n\n');
+    } else {
+      append(`// (${t('wgsl.none_texture', null, 'aucune texture')})\n\n`);
+    }
+
+    append('// --- Système ---\n');
+    const declSeen = new Set();
+    const dummyShaderCode = normalizeComputeCode(
       '',
-      '// --- Textures ---',
-      textureSection || '// (aucune texture)',
-      '',
-      '// --- Système ---',
-      stepSection,
-      '',
-      '// --- Compute Shaders ---',
-      shaderSection || '// (aucun compute shader)',
-    ].join('\n');
+      bindingOffset,
+      declSeen,
+      primaryTextureName,
+      primaryTextureType,
+    );
+    const stepSection = buildStepDeclarationWGSL(textureSection, dummyShaderCode);
+    pushSegment('system', 'step', 'system', stepSection);
+    append('\n\n');
+
+    append('// --- Fonctions ---\n');
+    const allFns = functionsStore.filter((f) => (f?.code || '').trim().length > 0);
+    const first = fn ? allFns.find((f) => f.id === fn.id) : null;
+    if (first) {
+      pushSegment('function', first.id, first.name, first.code || '');
+      if (allFns.length > 1) append('\n\n');
+      allFns.forEach((f) => {
+        if (f.id === first.id) return;
+        pushSegment('function', f.id, f.name, f.code || '');
+        append('\n\n');
+      });
+    } else if (allFns.length) {
+      allFns.forEach((f, idx) => {
+        pushSegment('function', f.id, f.name, f.code || '');
+        if (idx < allFns.length - 1) append('\n\n');
+      });
+    } else {
+      append(`// (${t('wgsl.none_function', null, 'aucune fonction')})`);
+    }
+
+    return { code, map: { segments } };
+  }
+
+  function buildCombinedWGSL() {
+    return buildCombinedWGSLWithMap().code;
   }
 
   function buildTextureDeclarationsWGSL() {
@@ -2640,6 +4723,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         // Si une texture primaire existe, on fait travailler le compute dessus et on supprime la déclaration locale
         if (primaryTextureName && replacedVar === null) {
           replacedVar = varName;
+          normalized.push('');
           return;
         }
         const newBinding = bindingOffset + originalBinding;
@@ -2651,6 +4735,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         if (!declSeen.has(key)) {
           declSeen.add(key);
           normalized.push(replaced);
+        } else {
+          normalized.push('');
         }
         return;
       }
@@ -2662,14 +4748,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       output = output.replace(varRegex, primaryTextureName);
       output = adjustLiteralsForTarget(output, primaryTextureType === 'float');
     }
-    return output.trim();
+    return output;
   }
 
   function validateWGSL(wgsl) {
     const errors = [];
     const fnMissingParen = /fn\s+[A-Za-z_][\w]*\s*{/.exec(wgsl);
     if (fnMissingParen) {
-      errors.push(t('wgsl.missingParen'));
+      errors.push('Une fonction semble manquer ses parenthèses : utilisez "fn nom()"');
       isCompiled = false;
     }
     let balance = 0;
@@ -2678,7 +4764,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (ch === '}') balance -= 1;
     });
     if (balance !== 0) {
-      errors.push(t('wgsl.unbalancedBraces'));
+      errors.push('Accolades déséquilibrées dans le WGSL généré.');
       isCompiled = false;
     }
     updateButtons();
@@ -2687,23 +4773,28 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   async function compileWGSL(wgsl) {
     if (!navigator.gpu) {
-      logConsole(t('log.compile.webgpuUnsupported'), 'compile');
-      updateSystemInfo(null, null, t('system.status.unsupported'));
+      logConsole('WebGPU non supporté dans ce navigateur.', 'compile');
       isCompiled = false; updateButtons();
       return null;
     }
     try {
-      const adapter = await navigator.gpu.requestAdapter({
-        powerPreference: gpuPowerPreference,
-      });
+      const adapter = await navigator.gpu.requestAdapter();
       if (!adapter) {
-        logConsole(t('log.compile.adapterMissing'), 'compile');
-        updateSystemInfo(null, null, t('system.status.adapterUnavailable'));
+        logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
         isCompiled = false; updateButtons();
         return null;
       }
+      currentAdapter = adapter;
+      currentAdapterInfo = null;
+      try {
+        if (typeof adapter.requestAdapterInfo === 'function') {
+          currentAdapterInfo = await adapter.requestAdapterInfo();
+        } else if (adapter.info) {
+          currentAdapterInfo = adapter.info;
+        }
+      } catch (e) {
+      }
       const device = await adapter.requestDevice();
-      await updateSystemInfo(adapter, device);
       const module = device.createShaderModule({ code: wgsl });
       const info = typeof module.getCompilationInfo === 'function'
         ? await module.getCompilationInfo()
@@ -2711,20 +4802,20 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (info.messages.some((m) => m.type === 'error')) {
         info.messages.forEach((m) => {
           if (m.type === 'error') {
-            logConsole(t('log.compile.wgslError', { message: m.message, line: m.lineNum, column: m.linePos }), 'compile');
+            logConsole(`Erreur WGSL: ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
           } else if (m.type === 'warning') {
-            logConsole(t('log.compile.wgslWarning', { message: m.message, line: m.lineNum, column: m.linePos }), 'compile');
+            logConsole(`Avertissement WGSL: ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
           }
         });
         isCompiled = false; updateButtons();
         return null;
       }
-      logConsole(t('log.compile.webgpuOk'), 'compile');
+      logConsole('Compilation WGSL WebGPU : OK.', 'compile');
       isCompiled = true; updateButtons();
       currentDevice = device;
       return { device, module };
     } catch (err) {
-      logConsole(t('log.compile.failed', { error: err.message || err }), 'compile');
+      logConsole(`Échec compilation WebGPU: ${err.message || err}`, 'compile');
       isCompiled = false; updateButtons();
       return null;
     }
@@ -2733,12 +4824,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function buildComputePipelines(device, module) {
     computePipelines = [];
     if (!pipeline.length) {
-      logConsole(t('log.pipeline.none'), 'pipeline');
+      logConsole('Aucun pipeline défini : module compilé sans pipeline.', 'pipeline');
       isCompiled = false; updateButtons();
       return;
     }
     if (!validateLoopStructure(pipeline)) {
-      logConsole(t('log.pipeline.invalidLoop'), 'pipeline');
+      logConsole('Structure de boucle invalide : vérifiez vos Début/Fin.', 'pipeline');
       isCompiled = false; updateButtons();
       return;
     }
@@ -2751,13 +4842,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         sharedPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
       }
     } catch (err) {
-      logConsole(t('log.pipeline.layoutFailed', { error: err.message || err }), 'pipeline');
+      logConsole(`Impossible de créer le layout commun: ${err.message || err}`, 'pipeline');
     }
     const flatSteps = expandPipeline(pipeline).filter((p) => (p.type || 'step') === 'step');
     flatSteps.forEach((pipeStep, idx) => {
       const shader = shaders.find((s) => s.id === pipeStep.shaderId);
       if (!shader) {
-        logConsole(t('log.pipeline.shaderMissing', { index: idx + 1 }), 'pipeline');
+        logConsole(`Pipeline ${idx + 1}: shader manquant.`, 'pipeline');
         isCompiled = false; updateButtons();
         return;
       }
@@ -2768,10 +4859,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           compute: { module, entryPoint },
         });
         computePipelines.push({ pipeId: pipeStep.id, pipeline: computePipe });
-        logConsole(t('log.pipeline.created', { index: idx + 1, shader: shader.name }), 'pipeline');
+        logConsole(`Pipeline ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
         isCompiled = true; updateButtons();
       } catch (err) {
-        logConsole(t('log.pipeline.createFailed', { shader: shader.name, error: err.message || err }), 'pipeline');
+        logConsole(`Échec création pipeline pour ${shader.name}: ${err.message || err}`, 'pipeline');
         isCompiled = false; updateButtons();
       }
     });
@@ -3202,7 +5293,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (shaders.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'list-item';
-      empty.textContent = t('shaders.emptyList');
+      empty.textContent = t('shaders.empty', null, 'Aucun compute shader. Ajoutez-en un.');
       shaderList.appendChild(empty);
       removeShaderBtn.disabled = true;
       duplicateShaderBtn.disabled = true;
@@ -3215,6 +5306,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     shaders.forEach((shader) => {
       const item = document.createElement('div');
       item.className = `list-item ${shader.id === selectedShaderId ? 'active' : ''}`;
+      item.dataset.id = shader.id;
+      if (shaderIdsWithErrors.has(shader.id)) item.classList.add('has-error');
       const title = document.createElement('div');
       title.textContent = shader.name;
       item.appendChild(title);
@@ -3223,6 +5316,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         renderShaderList();
         renderShaderForm(shader);
         renderShaderEditor(shader);
+        const loc = firstErrorLocation('shader', shader.id);
+        if (loc) navigateToLocation(loc);
       });
       shaderList.appendChild(item);
     });
@@ -3248,16 +5343,22 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       shaderEditor.value = '';
       shaderEditor.disabled = true;
       updateShaderLines('');
+      renderDiagnosticsPanels();
+      renderLineNumbers(shaderEditor, shaderGutter);
       return;
     }
     shaderEditor.disabled = false;
     shaderEditor.value = shader.code;
     updateShaderLines(shader.code);
+    scheduleLiveDiagnostics();
+    renderLineNumbers(shaderEditor, shaderGutter);
   }
 
   function updateShaderLines(code) {
     const lines = code ? code.split(/\r?\n/).length : 0;
-    shaderLines.textContent = formatLineCount(lines);
+    if (shaderLines) {
+      shaderLines.textContent = t('stats.lines_count', { count: lines }, `${lines} ${lines > 1 ? 'lignes' : 'ligne'}`);
+    }
   }
 
   function renderTextureList() {
@@ -3265,7 +5366,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (textures.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'list-item';
-      empty.textContent = t('textures.emptyList');
+      empty.textContent = t('buffers.empty', null, 'Aucune texture. Ajoutez-en une.');
       textureList.appendChild(empty);
       removeBtn.disabled = true;
       updateTextureDeclarationsEditor();
@@ -3302,7 +5403,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function renderPreview() {
     const tex = textures.find((t) => t.id === selectedTextureId);
     if (!tex) {
-      preview2D.innerHTML = `<p class="eyebrow">${t('preview.noTexture')}</p>`;
+      preview2D.innerHTML = `<p class="eyebrow">${t('preview.none_selected', null, 'Aucune texture sélectionnée')}</p>`;
       preview3D.innerHTML = '';
       setPreviewValue(0,0,null);
       setMouseUniformPosition(0, 0, 0, false);
@@ -3360,7 +5461,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function render2DImage(tex) {
     preview2D.classList.add('image-mode');
     const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
-    setSliceLabel(sliceIndex);
+    sliceLabel.textContent = `Z = ${sliceIndex}`;
     setMouseUniformPosition(0, 0, sliceIndex, false);
     const layer = tex.values[sliceIndex] || [];
     preview2D.innerHTML = '';
@@ -3700,8 +5801,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     resize() {
       const dpr = window.devicePixelRatio || 1;
       const rect = this.container.getBoundingClientRect();
-      const w = Math.max(200, rect.width);
-      const h = Math.max(200, Math.min(640, w)); // garder le volume à l'échelle carrée
+      const w = Math.max(80, rect.width);
+      const h = Math.max(80, rect.height || 80);
       const dw = Math.floor(w * dpr);
       const dh = Math.floor(h * dpr);
       if (this.canvas.width !== dw || this.canvas.height !== dh) {
@@ -3754,7 +5855,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     // Désactive l'affichage de valeur en 3D
     voxelRenderer.onHover = null;
     if (!voxelRenderer.isValid) {
-      preview3D.innerHTML = `<p class="eyebrow">${t('preview.webgl2Required')}</p>`;
+      preview3D.innerHTML = '<p class="eyebrow">WebGL2 requis pour l’aperçu 3D RGBA.</p>';
       return;
     }
     voxelRenderer.updateTexture(tex);
@@ -3767,7 +5868,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (parseInt(zSlice.value, 10) > zSlice.max) {
       zSlice.value = zSlice.max;
     }
-    setSliceLabel(zSlice.value);
+    sliceLabel.textContent = `Z = ${zSlice.value}`;
   }
 
   function seedInitialShader() {
@@ -3802,5 +5903,4 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   seedInitialFunction();
   seedInitialTexture();
   updateTextureDeclarationsEditor();
-  initSystemInfoOnLoad();
 });

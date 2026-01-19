@@ -1,0 +1,212 @@
+{
+  "header": {
+    "by": "by Pascal BALLET",
+    "tagline": "Apprendre et enseigner WebGPU facilement",
+    "version": "Version {{version}}",
+    "account": "Mon compte",
+    "system_info": "System"
+  },
+  "system": {
+    "title": "Infos système",
+    "close": "Fermer",
+    "copy": "Copier JSON",
+    "values": {
+      "supported": "Supporté",
+      "not_supported": "Non supporté",
+      "not_available": "Non disponible",
+      "agent_online": "En ligne",
+      "agent_offline": "Hors ligne",
+      "cpu_cores_one": "{{count}} cœur",
+      "cpu_cores_other": "{{count}} cœurs"
+    },
+    "sections": {
+      "performance": "Performance",
+      "hardware": "Matériel",
+      "browser": "Navigateur",
+      "gpu": "GPU",
+      "app": "Application"
+    },
+    "labels": {
+      "fps": "FPS",
+      "frame_time": "Frame time",
+      "js_heap": "JS Heap",
+      "browser": "Navigateur",
+      "platform": "Plateforme",
+      "language": "Langue",
+      "agent": "Agent local",
+      "os": "OS",
+      "cpu_model": "Modèle CPU",
+      "cpu_usage": "CPU",
+      "loadavg": "Charge",
+      "ram_usage": "RAM",
+      "cpu": "CPU",
+      "ram": "RAM",
+      "screen": "Écran",
+      "storage": "Stockage",
+      "webgpu": "WebGPU",
+      "webgpu_adapter": "Adaptateur",
+      "webgpu_features": "Features",
+      "webgpu_limits": "Limites WebGPU",
+      "webgl": "WebGL",
+      "gpu_name": "GPU",
+      "gpu_driver": "Driver",
+      "gpu_util": "Utilisation GPU",
+      "vram_usage": "VRAM",
+      "gpus_detected": "GPUs détectés",
+      "textures": "Textures",
+      "est_vram": "Mémoire GPU estimée"
+    }
+  },
+  "account": {
+    "status": {
+      "disconnected": "Non connecté"
+    },
+    "email": "Email",
+    "password": "Mot de passe",
+    "login": "Se connecter",
+    "signup": "Créer un compte",
+    "google": "Se connecter avec Google",
+    "info_title": "Mes informations",
+    "newsletter": "Recevoir la lettre d'information de WebGPU Studio",
+    "newsletter_hint": "(email exclusivement pour la newsletter)",
+    "logout": "Se déconnecter",
+    "delete": "Supprimer mon compte",
+    "hide": "Masquer",
+    "errors": {
+      "firebase_sdk": "Firebase SDK non chargé.",
+      "firebase_config_missing": "Firebase config manquante.",
+      "email_password_required": "Email et mot de passe requis."
+    }
+  },
+  "toolbar": {
+    "new": "Nouveau",
+    "load": "Charger",
+    "save": "Sauver",
+    "examples": "Exemples",
+    "help": "Aide",
+    "tuto": "Mission",
+    "compile": "Compile",
+    "step": "Step",
+    "run": "Run",
+    "pause": "Pause",
+    "stop": "Stop",
+    "step_counter": "step = {{count}}",
+    "values_empty": "Valeurs : —",
+    "value_at": "Val ({{x}},{{y}}) : {{value}}"
+  },
+  "help": {
+    "title": "Aide",
+    "reset_zoom": "100%",
+    "close": "Fermer"
+  },
+  "tabs": {
+    "buffers": "Buffers",
+    "functions": "Fonctions",
+    "shaders": "Compute Shaders",
+    "pass": "Pass",
+    "console": "Console"
+  },
+  "panels": {
+    "buffers_title": "Buffers",
+    "preview_title": "Visualisation 2D/3D",
+    "selected_buffer": "Buffer sélectionné",
+    "compute_shaders": "Compute Shaders"
+  },
+  "common": {
+    "properties": "Propriétés"
+  },
+  "buttons": {
+    "add": "+ Ajouter",
+    "delete": "Supprimer",
+    "apply": "Appliquer",
+    "duplicate": "Dupliquer",
+    "regen_values": "Régénérer valeurs",
+    "add_pipeline": "+ Pipeline >>>"
+  },
+  "preview": {
+    "speed": "Vitesse",
+    "fullscreen": "Plein écran",
+    "exit": "Quitter",
+    "none_selected": "Aucune texture sélectionnée"
+  },
+  "form": {
+    "name": "Nom",
+    "size_x": "Taille X",
+    "size_y": "Taille Y",
+    "size_z": "Taille Z",
+    "type": "Type",
+    "initial_values": "Valeurs initiales"
+  },
+  "options": {
+    "type_int": "Entier (i32)",
+    "type_uint": "Entier non signé (u32)",
+    "type_float": "Flottant (f32)",
+    "fill_empty": "Matrice vide (zéro)",
+    "fill_random": "Remplissage aléatoire"
+  },
+  "pipeline": {
+    "before": "Avant ←",
+    "after": "→ Après",
+    "loop_start": "+ Début boucle",
+    "loop_end": "+ Fin boucle",
+    "execution_order": "Ordre d'exécution des",
+    "pipelines": "Pipelines",
+    "name": "Nom du pipe-line",
+    "shader": "Compute Shader associé",
+    "repetitions": "Répétitions",
+    "repetitions_hint": "Les pipelines jusqu’à la fin de boucle seront répétés.",
+    "dispatch": "dispatch Workgroups",
+    "loop_end_hint": "Fin de boucle : aucune propriété à configurer.",
+    "no_shader_hint": "Ajoutez un compute shader pour le pipeline.",
+    "empty_timeline": "Aucun Pipeline dans la Pass.",
+    "loop_start_name": "Début boucle",
+    "loop_end_name": "Fin boucle",
+    "timeline": {
+      "repetitions": "Répétitions : {{count}}",
+      "loop_end": "Fin boucle",
+      "dispatch": "{{shader}} · Dispatch {{x}}×{{y}}×{{z}}"
+    },
+    "panel": {
+      "loop_start_selected": "Début boucle sélectionné",
+      "loop_end_selected": "Fin boucle sélectionné",
+      "pipeline_selected": "Pipeline sélectionnée"
+    },
+    "select": {
+      "loop_start": "Boucle (début)",
+      "loop_end": "Boucle (fin)",
+      "no_shader": "Aucun compute shader disponible"
+    }
+  },
+  "functions": {
+    "libraries": "Biblio-thèques",
+    "declarations": "Déclaration des <b>Buffers</b> et des <b>uniform</b>",
+    "code_label": "Code",
+    "selected": "Bibliothèque sélectionnée",
+    "selected_function": "Fonction sélectionnée",
+    "empty": "Aucune bibliothèque. Ajoutez-en une."
+  },
+  "stats": {
+    "lines": "Lignes",
+    "chars": "Caractères",
+    "lines_count_one": "{{count}} ligne",
+    "lines_count_other": "{{count}} lignes"
+  },
+  "console": {
+    "title": "Console",
+    "compile_errors": "Erreurs de compilation",
+    "clear": "Effacer",
+    "empty": "Aucune erreur pour le moment.",
+    "location": {
+      "shader": "Shader",
+      "function": "Fonction"
+    }
+  },
+  "shaders": {
+    "empty": "Aucun compute shader. Ajoutez-en un.",
+    "wgsl_label": "Web GPU Shader Language"
+  },
+  "wgsl": {
+    "none_function": "aucune fonction",
+    "none_texture": "aucune texture"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "examples": [
+    "Arbre.wgstudio",
+    "DiffusionSimple.wgstudio",
+    "Dive-PP.wgstudio",
+    "GameOfLifeByJohnConway.wgstudio",
+    "MarcheAlea.wgstudio",
+    "MarcheAleaBIG-Loop.wgstudio",
+    "Plasma2.wgstudio",
+    "PlasmaByTsoding.wgstudio",
+    "PlasmaRectByTsoding.wgstudio",
+    "Pluie.wgstudio",
+    "Sun.wgstudio"
+  ]
+}

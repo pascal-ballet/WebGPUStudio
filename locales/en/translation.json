@@ -1,0 +1,212 @@
+{
+  "header": {
+    "by": "by Pascal BALLET",
+    "tagline": "Learn and teach WebGPU easily",
+    "version": "Version {{version}}",
+    "account": "My account",
+    "system_info": "System"
+  },
+  "system": {
+    "title": "System info",
+    "close": "Close",
+    "copy": "Copy JSON",
+    "values": {
+      "supported": "Supported",
+      "not_supported": "Not supported",
+      "not_available": "Not available",
+      "agent_online": "Online",
+      "agent_offline": "Offline",
+      "cpu_cores_one": "{{count}} core",
+      "cpu_cores_other": "{{count}} cores"
+    },
+    "sections": {
+      "performance": "Performance",
+      "hardware": "Hardware",
+      "browser": "Browser",
+      "gpu": "GPU",
+      "app": "Application"
+    },
+    "labels": {
+      "fps": "FPS",
+      "frame_time": "Frame time",
+      "js_heap": "JS Heap",
+      "browser": "Browser",
+      "platform": "Platform",
+      "language": "Language",
+      "agent": "Local agent",
+      "os": "OS",
+      "cpu_model": "CPU model",
+      "cpu_usage": "CPU",
+      "loadavg": "Load",
+      "ram_usage": "RAM",
+      "cpu": "CPU",
+      "ram": "RAM",
+      "screen": "Screen",
+      "storage": "Storage",
+      "webgpu": "WebGPU",
+      "webgpu_adapter": "Adapter",
+      "webgpu_features": "Features",
+      "webgpu_limits": "WebGPU limits",
+      "webgl": "WebGL",
+      "gpu_name": "GPU",
+      "gpu_driver": "Driver",
+      "gpu_util": "GPU util",
+      "vram_usage": "VRAM",
+      "gpus_detected": "Detected GPUs",
+      "textures": "Textures",
+      "est_vram": "Est. GPU memory"
+    }
+  },
+  "account": {
+    "status": {
+      "disconnected": "Not connected"
+    },
+    "email": "Email",
+    "password": "Password",
+    "login": "Sign in",
+    "signup": "Create account",
+    "google": "Sign in with Google",
+    "info_title": "My info",
+    "newsletter": "Receive the WebGPU Studio newsletter",
+    "newsletter_hint": "(email used only for the newsletter)",
+    "logout": "Sign out",
+    "delete": "Delete my account",
+    "hide": "Hide",
+    "errors": {
+      "firebase_sdk": "Firebase SDK not loaded.",
+      "firebase_config_missing": "Missing Firebase config.",
+      "email_password_required": "Email and password are required."
+    }
+  },
+  "toolbar": {
+    "new": "New",
+    "load": "Load",
+    "save": "Save",
+    "examples": "Examples",
+    "help": "Help",
+    "tuto": "Missions",
+    "compile": "Compile",
+    "step": "Step",
+    "run": "Run",
+    "pause": "Pause",
+    "stop": "Stop",
+    "step_counter": "step = {{count}}",
+    "values_empty": "Values: —",
+    "value_at": "Val ({{x}},{{y}}): {{value}}"
+  },
+  "help": {
+    "title": "Help",
+    "reset_zoom": "100%",
+    "close": "Close"
+  },
+  "tabs": {
+    "buffers": "Buffers",
+    "functions": "Functions",
+    "shaders": "Compute Shaders",
+    "pass": "Pass",
+    "console": "Console"
+  },
+  "panels": {
+    "buffers_title": "Buffers",
+    "preview_title": "2D/3D Preview",
+    "selected_buffer": "Selected buffer",
+    "compute_shaders": "Compute Shaders"
+  },
+  "common": {
+    "properties": "Properties"
+  },
+  "buttons": {
+    "add": "+ Add",
+    "delete": "Delete",
+    "apply": "Apply",
+    "duplicate": "Duplicate",
+    "regen_values": "Regenerate values",
+    "add_pipeline": "+ Pipeline >>>"
+  },
+  "preview": {
+    "speed": "Speed",
+    "fullscreen": "Fullscreen",
+    "exit": "Exit",
+    "none_selected": "No buffer selected"
+  },
+  "form": {
+    "name": "Name",
+    "size_x": "Size X",
+    "size_y": "Size Y",
+    "size_z": "Size Z",
+    "type": "Type",
+    "initial_values": "Initial values"
+  },
+  "options": {
+    "type_int": "Integer (i32)",
+    "type_uint": "Unsigned integer (u32)",
+    "type_float": "Float (f32)",
+    "fill_empty": "Empty matrix (zero)",
+    "fill_random": "Random fill"
+  },
+  "pipeline": {
+    "before": "Before ←",
+    "after": "→ After",
+    "loop_start": "+ Loop start",
+    "loop_end": "+ Loop end",
+    "execution_order": "Execution order of",
+    "pipelines": "Pipelines",
+    "name": "Pipeline name",
+    "shader": "Associated compute shader",
+    "repetitions": "Repetitions",
+    "repetitions_hint": "Pipelines up to the loop end will be repeated.",
+    "dispatch": "dispatch workgroups",
+    "loop_end_hint": "Loop end: no properties to configure.",
+    "no_shader_hint": "Add a compute shader for the pipeline.",
+    "empty_timeline": "No pipeline in the pass.",
+    "loop_start_name": "Loop start",
+    "loop_end_name": "Loop end",
+    "timeline": {
+      "repetitions": "Repetitions: {{count}}",
+      "loop_end": "Loop end",
+      "dispatch": "{{shader}} · Dispatch {{x}}×{{y}}×{{z}}"
+    },
+    "panel": {
+      "loop_start_selected": "Selected loop start",
+      "loop_end_selected": "Selected loop end",
+      "pipeline_selected": "Selected pipeline"
+    },
+    "select": {
+      "loop_start": "Loop (start)",
+      "loop_end": "Loop (end)",
+      "no_shader": "No compute shader available"
+    }
+  },
+  "functions": {
+    "libraries": "Libraries",
+    "declarations": "Declaration of <b>Buffers</b> and <b>uniforms</b>",
+    "code_label": "Code",
+    "selected": "Selected library",
+    "selected_function": "Selected function",
+    "empty": "No library yet. Add one."
+  },
+  "stats": {
+    "lines": "Lines",
+    "chars": "Characters",
+    "lines_count_one": "{{count}} line",
+    "lines_count_other": "{{count}} lines"
+  },
+  "console": {
+    "title": "Console",
+    "compile_errors": "Compilation errors",
+    "clear": "Clear",
+    "empty": "No errors so far.",
+    "location": {
+      "shader": "Shader",
+      "function": "Function"
+    }
+  },
+  "shaders": {
+    "empty": "No compute shader yet. Add one.",
+    "wgsl_label": "WebGPU Shader Language"
+  },
+  "wgsl": {
+    "none_function": "no function",
+    "none_texture": "no texture"
+  }
+}
