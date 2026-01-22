@@ -1,7 +1,7 @@
 {
   "header": {
     "by": "by Pascal BALLET",
-    "tagline": "Learn and teach WebGPU easily",
+    "tagline": "WebGPU easily",
     "version": "Version {{version}}",
     "account": "My account",
     "system_info": "System"
