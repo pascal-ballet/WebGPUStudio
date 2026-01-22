@@ -1994,6 +1994,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function syncGutterHeight(textarea, gutter) {
+    if (!textarea || !gutter) return;
+    const h = textarea.getBoundingClientRect().height;
+    if (!Number.isFinite(h) || h <= 0) return;
+    gutter.style.height = `${Math.round(h)}px`;
+  }
+
   function renderLineNumbers(textarea, gutter, errorLines = new Set()) {
     if (!textarea || !gutter) return;
     const value = textarea.value || '';
@@ -2008,6 +2015,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     gutter.innerHTML = '';
     gutter.appendChild(fragment);
     gutter.scrollTop = textarea.scrollTop;
+    syncGutterHeight(textarea, gutter);
   }
 
   function firstErrorLocation(kind, id) {
@@ -3832,6 +3840,20 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       functionGutter.scrollTop = functionEditor.scrollTop;
     });
   }
+
+  function attachGutterAutoSize(textarea, gutter) {
+    if (!textarea || !gutter) return;
+    syncGutterHeight(textarea, gutter);
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => syncGutterHeight(textarea, gutter));
+      ro.observe(textarea);
+    } else {
+      window.addEventListener('resize', () => syncGutterHeight(textarea, gutter));
+    }
+  }
+
+  attachGutterAutoSize(shaderEditor, shaderGutter);
+  attachGutterAutoSize(functionEditor, functionGutter);
 
   function buildTextureFromForm() {
     const formData = new FormData(textureForm);

@@ -1,7 +1,7 @@
 {
   "header": {
     "by": "by Pascal BALLET",
-    "tagline": "WebGPU easily",
+    "tagline": "Learn and teach WebGPU easily",
     "version": "Version {{version}}",
     "account": "My account",
     "system_info": "System"
@@ -126,7 +126,7 @@
   "preview": {
     "speed": "Speed",
     "fullscreen": "Fullscreen",
-    "exit": "Exit",
+    "exit": "Back",
     "none_selected": "No buffer selected"
   },
   "form": {

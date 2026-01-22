@@ -57,6 +57,7 @@ body {
 .header-actions {
   display: flex;
   gap: 10px;
+  position: relative;
 }
 
 .lang-select {
@@ -584,6 +585,10 @@ select option, select optgroup {
 }
 
 #examplesBtn {
+  margin-left: 0;
+}
+
+.toolbar #systemInfoBtn {
   margin-left: auto;
 }
 

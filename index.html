@@ -23,7 +23,8 @@
         <option value="en">🇬🇧 EN</option>
       </select>
       <button class="ghost small" id="accountToggleBtn" data-i18n="header.account">Mon compte</button>
-      <button class="ghost small" id="systemInfoBtn" data-i18n="header.system_info">System</button>
+      <button class="ghost small" id="examplesBtn" data-i18n="toolbar.examples">Exemples</button>
+      <div class="examples-menu hidden" id="examplesMenu" aria-label="Examples"></div>
       <button class="ghost small" id="themeToggleBtn" aria-label="Changer de thème"></button>
     </div>
   </header>
@@ -218,12 +219,16 @@
       <button class="ghost" id="pauseBtn" data-i18n="toolbar.pause">Pause</button>
       <button class="ghost danger" id="stopBtn" data-i18n="toolbar.stop">Stop</button>
       <span class="pill subtle" id="stepLabel">step = 0</span>
+      <div class="pill subtle" id="runSpeedPill">
+        <span data-i18n="preview.speed">Vitesse</span>
+        <input type="range" min="1" max="240" value="60" id="runSpeedSlider" />
+        <span id="runSpeedLabel">60/s</span>
+      </div>
       <input type="file" id="loadFileInput" accept=".wgstudio" style="display:none" />
       <span class="toolbar-separator" aria-hidden="true"></span>
       <span class="pill subtle" id="previewValueLabel" data-i18n="toolbar.values_empty">Valeurs : —</span>
-      <button class="ghost" id="examplesBtn" data-i18n="toolbar.examples">Exemples</button>
+      <button class="ghost" id="systemInfoBtn" data-i18n="header.system_info">System</button>
       <button class="ghost" id="helpBtn" data-i18n="toolbar.help">Aide</button>
-      <div class="examples-menu hidden" id="examplesMenu" aria-label="Examples"></div>
       <button class="ghost" id="tutosBtn" data-i18n="toolbar.tuto">Tuto</button>
       <div class="examples-menu hidden" id="tutosMenu" aria-label="Tutorials"></div>
     </div>
@@ -264,11 +269,6 @@
             <button class="toggle" data-mode="2d">2D</button>
             <button class="toggle active" data-mode="3d">3D</button>
           </div>
-          <div class="pill subtle" id="runSpeedPill">
-            <span data-i18n="preview.speed">Vitesse</span>
-            <input type="range" min="1" max="240" value="60" id="runSpeedSlider" />
-            <span id="runSpeedLabel">60/s</span>
-          </div>
           <button class="ghost small" id="previewFullscreenBtn" data-i18n="preview.fullscreen">Plein écran</button>
         </div>
         <div class="preview-fullscreen-controls hidden" id="previewFullscreenControls">
@@ -278,6 +278,11 @@
           <button class="ghost" id="fsPauseBtn" data-i18n="toolbar.pause">Pause</button>
           <button class="ghost danger" id="fsStopBtn" data-i18n="toolbar.stop">Stop</button>
           <span class="pill subtle" id="fsStepLabel">step = 0</span>
+          <div class="pill subtle" id="fsRunSpeedPill">
+            <span data-i18n="preview.speed">Vitesse</span>
+            <input type="range" min="1" max="240" value="60" id="fsRunSpeedSlider" />
+            <span id="fsRunSpeedLabel">60/s</span>
+          </div>
           <div class="toggle-group" id="fsToggleGroup">
             <button class="toggle" data-mode="2d">2D</button>
             <button class="toggle active" data-mode="3d">3D</button>
@@ -285,11 +290,6 @@
           <div class="pill subtle" id="fsZSlicePill">
             <input type="range" min="0" value="0" id="fsZSlice" />
             <span id="fsSliceLabel">Z = 0</span>
-          </div>
-          <div class="pill subtle" id="fsRunSpeedPill">
-            <span data-i18n="preview.speed">Vitesse</span>
-            <input type="range" min="1" max="240" value="60" id="fsRunSpeedSlider" />
-            <span id="fsRunSpeedLabel">60/s</span>
           </div>
           <button class="ghost small" id="fsExitFullscreenBtn" data-i18n="preview.exit">Quitter</button>
         </div>
