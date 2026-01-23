@@ -170,6 +170,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shaderGutter = document.getElementById('shaderGutter');
   const shaderLines = document.getElementById('shaderLines');
   const shaderDiagnostics = document.getElementById('shaderDiagnostics');
+  const shaderBufferList = document.getElementById('shaderBufferList');
+  const shaderBindingsEditor = document.getElementById('shaderBindingsEditor');
   const addShaderBtn = document.getElementById('addShaderBtn');
   const removeShaderBtn = document.getElementById('removeShaderBtn');
   const duplicateShaderBtn = document.getElementById('duplicateShaderBtn');
@@ -313,6 +315,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastRunUiUpdateAt = 0;
   updateButtons()
 
+  const MAX_SHADER_BUFFERS = 8;
+  const UNIFORM_BINDINGS = {
+    step: 8,
+    mouseX: 9,
+    mouseY: 10,
+    mouseZ: 11,
+    mouseBtn: 12,
+    key: 13,
+  };
+  const USER_BINDING_OFFSET = UNIFORM_BINDINGS.key + 1;
+
   let textures = [];
   let selectedTextureId = null;
   let previewMode = '3d';
@@ -338,14 +351,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   let bindingsDirty = true; // force regen des bind groups/read buffers quand besoin
   let isSimulationRunning = false; // Empêche les appels concurrents à playSimulationStep
   let bindingMetas = new Map();
+  let uniformBuffers = new Map();
+  let textureBuffers = new Map();
+  let dummyStorageBuffer = null;
   let initialUploadDone = false;
   let simulationSteps = 0;
-  let stepBinding = null;
-  let mouseXBinding = null;
-  let mouseYBinding = null;
-  let mouseZBinding = null;
-  let keyBinding = null;
-  let mouseBtnBinding = null;
+  let stepBinding = UNIFORM_BINDINGS.step;
+  let mouseXBinding = UNIFORM_BINDINGS.mouseX;
+  let mouseYBinding = UNIFORM_BINDINGS.mouseY;
+  let mouseZBinding = UNIFORM_BINDINGS.mouseZ;
+  let keyBinding = UNIFORM_BINDINGS.key;
+  let mouseBtnBinding = UNIFORM_BINDINGS.mouseBtn;
   let sharedPipelineLayout = null;
   let voxelRenderer = null;
   let previewValueCurrent = null;
@@ -1539,9 +1555,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const estimateBufferBytes = () => {
     let total = 0;
     try {
-      bindingBuffers.forEach((entry) => {
-        total += Number(entry?.size) || 0;
-      });
+      const uniformCount = uniformBuffers.size || 0;
+      total += uniformCount * 4;
+      if (dummyStorageBuffer) total += 4;
     } catch (e) {
     }
     return total;
@@ -2463,12 +2479,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function updateStepCounterBuffer() {
-    if (stepBinding === null || !currentDevice) return;
-    const bufEntry = bindingBuffers.get(stepBinding);
-    if (!bufEntry) return;
+    if (!currentDevice) return;
+    const buf = uniformBuffers.get('step');
+    if (!buf) return;
     const data = new Uint32Array([simulationSteps]);
     currentDevice.queue.writeBuffer(
-      bufEntry.buffer,
+      buf,
       0,
       data.buffer,
       data.byteOffset,
@@ -2478,54 +2494,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function updateMouseUniformBuffer() {
     if (!currentDevice) return;
-    if (mouseXBinding !== null) {
-      const bufEntry = bindingBuffers.get(mouseXBinding);
-      if (bufEntry) {
-        const data = new Uint32Array([mouseXValue]);
-        currentDevice.queue.writeBuffer(
-          bufEntry.buffer,
-          0,
-          data.buffer,
-          data.byteOffset,
-          data.byteLength,
-        );
-      }
+    const bufX = uniformBuffers.get('mouseX');
+    const bufY = uniformBuffers.get('mouseY');
+    const bufZ = uniformBuffers.get('mouseZ');
+    if (bufX) {
+      const data = new Uint32Array([mouseXValue]);
+      currentDevice.queue.writeBuffer(bufX, 0, data.buffer, data.byteOffset, data.byteLength);
     }
-    if (mouseYBinding !== null) {
-      const bufEntry = bindingBuffers.get(mouseYBinding);
-      if (bufEntry) {
-        const data = new Uint32Array([mouseYValue]);
-        currentDevice.queue.writeBuffer(
-          bufEntry.buffer,
-          0,
-          data.buffer,
-          data.byteOffset,
-          data.byteLength,
-        );
-      }
+    if (bufY) {
+      const data = new Uint32Array([mouseYValue]);
+      currentDevice.queue.writeBuffer(bufY, 0, data.buffer, data.byteOffset, data.byteLength);
     }
-    if (mouseZBinding !== null) {
-      const bufEntry = bindingBuffers.get(mouseZBinding);
-      if (bufEntry) {
-        const data = new Uint32Array([mouseZValue]);
-        currentDevice.queue.writeBuffer(
-          bufEntry.buffer,
-          0,
-          data.buffer,
-          data.byteOffset,
-          data.byteLength,
-        );
-      }
+    if (bufZ) {
+      const data = new Uint32Array([mouseZValue]);
+      currentDevice.queue.writeBuffer(bufZ, 0, data.buffer, data.byteOffset, data.byteLength);
     }
   }
 
   function updateKeyUniformBuffer() {
-    if (!currentDevice || keyBinding === null) return;
-    const bufEntry = bindingBuffers.get(keyBinding);
-    if (!bufEntry) return;
+    if (!currentDevice) return;
+    const buf = uniformBuffers.get('key');
+    if (!buf) return;
     const data = new Uint32Array([keyValue]);
     currentDevice.queue.writeBuffer(
-      bufEntry.buffer,
+      buf,
       0,
       data.buffer,
       data.byteOffset,
@@ -2534,12 +2526,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateMouseBtnUniformBuffer() {
-    if (!currentDevice || mouseBtnBinding === null) return;
-    const bufEntry = bindingBuffers.get(mouseBtnBinding);
-    if (!bufEntry) return;
+    if (!currentDevice) return;
+    const buf = uniformBuffers.get('mouseBtn');
+    if (!buf) return;
     const data = new Uint32Array([mouseBtnValue]);
     currentDevice.queue.writeBuffer(
-      bufEntry.buffer,
+      buf,
       0,
       data.buffer,
       data.byteOffset,
@@ -2581,12 +2573,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     prep = null;
     bindingMetas = new Map();
     initialUploadDone = false;
-    stepBinding = null;
-    mouseXBinding = null;
-    mouseYBinding = null;
-    mouseZBinding = null;
-    keyBinding = null;
-    mouseBtnBinding = null;
+    uniformBuffers = new Map();
+    textureBuffers = new Map();
+    dummyStorageBuffer = null;
     sharedPipelineLayout = null;
   }
 
@@ -2792,9 +2781,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           messages.push(m);
         });
 
-        const bindingOffset = textures.length;
+        const bindingOffset = USER_BINDING_OFFSET;
         const primaryTextureName = textures[0]
-          ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
+          ? sanitizedIdentifier(textures[0].name || 'Buffer1', 'Buffer1')
           : null;
         const primaryTextureType = textures[0]?.type || null;
 
@@ -2803,11 +2792,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         for (let i = 0; i < nonEmptyShaders.length; i += 1) {
           const shader = nonEmptyShaders[i];
+          const selectedTextures = getShaderSelectedTextures(shader);
+          const primaryForShader = selectedTextures[0]
+            ? sanitizedIdentifier(selectedTextures[0].name || 'Buffer1', 'Buffer1')
+            : null;
+          const primaryTypeForShader = selectedTextures[0]?.type || null;
           const builtSingle = buildSingleShaderWGSLWithMap(
             shader,
             bindingOffset,
-            primaryTextureName,
-            primaryTextureType,
+            primaryForShader,
+            primaryTypeForShader,
           );
           const singleModule = device.createShaderModule({ code: builtSingle.code });
           const singleInfo = typeof singleModule.getCompilationInfo === 'function'
@@ -2833,11 +2827,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         for (let i = 0; i < nonEmptyFunctions.length; i += 1) {
           const fn = nonEmptyFunctions[i];
+          const selectedTextures = getShaderSelectedTextures(shaders.find((s) => s.id === selectedShaderId) || shaders[0]);
+          const primaryForShader = selectedTextures[0]
+            ? sanitizedIdentifier(selectedTextures[0].name || 'Buffer1', 'Buffer1')
+            : null;
+          const primaryTypeForShader = selectedTextures[0]?.type || null;
           const builtFn = buildSingleFunctionWGSLWithMap(
             fn,
             bindingOffset,
-            primaryTextureName,
-            primaryTextureType,
+            primaryForShader,
+            primaryTypeForShader,
           );
           const fnModule = device.createShaderModule({ code: builtFn.code });
           const fnInfo = typeof fnModule.getCompilationInfo === 'function'
@@ -3024,11 +3023,70 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     try {
-      const result = await compileWGSL(wgsl);
-      if (result && result.module) {
-        buildComputePipelines(result.device, result.module);
-        markBindingsDirty(); // nouveau module/pipelines => regen bind group
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
+        isCompiled = false; updateButtons();
+        return;
       }
+      currentAdapter = adapter;
+      currentAdapterInfo = null;
+      try {
+        if (typeof adapter.requestAdapterInfo === 'function') {
+          currentAdapterInfo = await adapter.requestAdapterInfo();
+        } else if (adapter.info) {
+          currentAdapterInfo = adapter.info;
+        }
+      } catch (e) {
+      }
+      const device = await adapter.requestDevice();
+      currentDevice = device;
+
+      const flatSteps = expandPipeline(pipeline).filter((p) => (p.type || 'step') === 'step');
+      const shaderIds = Array.from(new Set(flatSteps.map((p) => p.shaderId).filter(Boolean)));
+      const shaderModules = new Map();
+      let hasErrors = false;
+
+      for (let i = 0; i < shaderIds.length; i += 1) {
+        const shader = shaders.find((s) => s.id === shaderIds[i]);
+        if (!shader) continue;
+        const selectedTextures = getShaderSelectedTextures(shader);
+        const primaryTextureName = selectedTextures[0]
+          ? sanitizedIdentifier(selectedTextures[0].name || 'Buffer1', 'Buffer1')
+          : null;
+        const primaryTextureType = selectedTextures[0]?.type || null;
+        const wgslForShader = buildSingleShaderWGSLWithMap(
+          shader,
+          USER_BINDING_OFFSET,
+          primaryTextureName,
+          primaryTextureType,
+        ).code;
+        const module = device.createShaderModule({ code: wgslForShader });
+        const info = typeof module.getCompilationInfo === 'function'
+          ? await module.getCompilationInfo()
+          : { messages: [] };
+        const hasShaderErrors = (info.messages || []).some((m) => m.type === 'error');
+        (info.messages || []).forEach((m) => {
+          if (m.type === 'error') {
+            logConsole(`Erreur WGSL (${shader.name}): ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
+          } else if (m.type === 'warning') {
+            logConsole(`Avertissement WGSL (${shader.name}): ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
+          }
+        });
+        if (hasShaderErrors) {
+          hasErrors = true;
+          continue;
+        }
+        shaderModules.set(shader.id, { module, shader });
+      }
+
+      if (hasErrors) {
+        isCompiled = false; updateButtons();
+        return;
+      }
+
+      buildComputePipelines(device, shaderModules);
+      markBindingsDirty(); // nouveau module/pipelines => regen bind group
     } finally {
       isCompiling = false;
       updateButtons();
@@ -3459,6 +3517,105 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   // Pipeline
   // ********************
 
+  function ensureUniformBuffers(device) {
+    if (!device) return;
+    const ensure = (key) => {
+      if (uniformBuffers.has(key)) return;
+      const buffer = device.createBuffer({
+        size: 4,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      uniformBuffers.set(key, buffer);
+    };
+    ensure('step');
+    ensure('mouseX');
+    ensure('mouseY');
+    ensure('mouseZ');
+    ensure('mouseBtn');
+    ensure('key');
+  }
+
+  function ensureDummyStorageBuffer(device) {
+    if (!device) return null;
+    if (dummyStorageBuffer) return dummyStorageBuffer;
+    dummyStorageBuffer = device.createBuffer({
+      size: 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    return dummyStorageBuffer;
+  }
+
+  function ensureTextureBuffer(device, tex) {
+    if (!device || !tex) return null;
+    const size = Math.max(4, (tex.size.x * tex.size.y * tex.size.z) * 4);
+    let entry = textureBuffers.get(tex.id);
+    if (!entry || entry.size !== size) {
+      if (entry?.buffer) {
+        try {
+          entry.buffer.destroy();
+        } catch (e) {
+        }
+      }
+      const buffer = device.createBuffer({
+        size,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+      });
+      entry = { buffer, size };
+      textureBuffers.set(tex.id, entry);
+    }
+    return entry;
+  }
+
+  function buildTextureReadTasks(device) {
+    const readTasks = [];
+    if (!device) return readTasks;
+    textures.forEach((tex) => {
+      const entry = ensureTextureBuffer(device, tex);
+      if (!entry) return;
+      const readBuffer = device.createBuffer({
+        size: entry.size,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+      });
+      readTasks.push({ dst: readBuffer, src: entry.buffer, size: entry.size, tex });
+    });
+    return readTasks;
+  }
+
+  function buildBindGroupEntriesForShader(device, shader) {
+    const entries = [];
+    if (!device) return entries;
+    const selected = getShaderSelectedTextures(shader);
+    for (let i = 0; i < MAX_SHADER_BUFFERS; i += 1) {
+      const tex = selected[i] || null;
+      if (tex) {
+        const entry = ensureTextureBuffer(device, tex);
+        if (entry) {
+          entries.push({ binding: i, resource: { buffer: entry.buffer } });
+        }
+      } else {
+        const dummy = ensureDummyStorageBuffer(device);
+        if (dummy) entries.push({ binding: i, resource: { buffer: dummy } });
+      }
+    }
+
+    ensureUniformBuffers(device);
+    const uniformMap = {
+      step: UNIFORM_BINDINGS.step,
+      mouseX: UNIFORM_BINDINGS.mouseX,
+      mouseY: UNIFORM_BINDINGS.mouseY,
+      mouseZ: UNIFORM_BINDINGS.mouseZ,
+      mouseBtn: UNIFORM_BINDINGS.mouseBtn,
+      key: UNIFORM_BINDINGS.key,
+    };
+    Object.keys(uniformMap).forEach((key) => {
+      const buf = uniformBuffers.get(key);
+      if (buf) {
+        entries.push({ binding: uniformMap[key], resource: { buffer: buf } });
+      }
+    });
+    return entries;
+  }
+
   // Prépare bind group + buffers + dispatchList
   function initPipelineExecution() {
     if (!bindingsDirty && prep) return prep;
@@ -3471,15 +3628,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       logConsole('Aucun pipeline compute disponible. Compile d’abord.', 'run');
       return null;
     }
-    const { entries, readTasks } = prepareBindingBuffers(currentDevice, lastCompiledWGSL);
-    if (!entries.length) {
-      logConsole('Aucune ressource à binder. Vérifiez le WGSL.', 'run');
-      return null;
-    }
     if (!validateLoopStructure(pipeline)) {
       logConsole('Structure de boucle invalide : vérifiez vos Début/Fin.', 'run');
       return null;
     }
+    const readTasks = buildTextureReadTasks(currentDevice);
     const dispatchList = expandPipeline(pipeline)
       .map((pipe, idx) => {
         const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
@@ -3487,9 +3640,19 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           logConsole(`Pipeline ${idx + 1}: pipeline introuvable.`, 'run');
           return null;
         }
+        const shader = shaders.find((s) => s.id === pipeEntry.shaderId);
+        if (!shader) {
+          logConsole(`Pipeline ${idx + 1}: shader manquant pour bindings.`, 'run');
+          return null;
+        }
         const layout = pipeEntry.pipeline.getBindGroupLayout(0);
         if (!layout) {
           logConsole(`Pipeline ${idx + 1}: layout introuvable pour le pipeline.`, 'run');
+          return null;
+        }
+        const entries = buildBindGroupEntriesForShader(currentDevice, shader);
+        if (!entries.length) {
+          logConsole(`Pipeline ${idx + 1}: aucune ressource à binder.`, 'run');
           return null;
         }
         const bindGroup = currentDevice.createBindGroup({ layout, entries });
@@ -3774,6 +3937,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const shader = buildDefaultShader();
     shaders.push(shader);
     selectedShaderId = shader.id;
+    normalizeShaderBufferIds(shader);
     renderShaderList();
     renderShaderForm(shader);
     renderShaderEditor(shader);
@@ -3812,6 +3976,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `shader-${Date.now()}`,
       name: `${original.name} (copie)`,
     };
+    normalizeShaderBufferIds(copy);
     syncShaderEntryName(copy);
     shaders.push(copy);
     selectedShaderId = copy.id;
@@ -3825,17 +3990,22 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const newTexture = buildTextureFromForm();
     textures.push(newTexture);
     selectedTextureId = newTexture.id;
+    normalizeAllShaderBufferIds();
     markBindingsDirty();
     renderTextureList();
     renderForm(newTexture);
     renderPreview();
     updateTextureDeclarationsEditor();
+    const currentShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
+    renderShaderBufferList(currentShader);
+    updateShaderBindingsEditor(currentShader);
   });
 
   removeBtn.addEventListener('click', () => {
     if (!selectedTextureId) return;
     textures = textures.filter((t) => t.id !== selectedTextureId);
     selectedTextureId = textures[0]?.id || null;
+    normalizeAllShaderBufferIds();
     markBindingsDirty();
     renderTextureList();
     if (selectedTextureId) {
@@ -3844,6 +4014,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
     renderPreview();
     updateTextureDeclarationsEditor();
+    const currentShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
+    renderShaderBufferList(currentShader);
+    updateShaderBindingsEditor(currentShader);
   });
 
   regenBtn.addEventListener('click', () => {
@@ -3861,6 +4034,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const newTexture = buildTextureFromForm();
       textures.push(newTexture);
       selectedTextureId = newTexture.id;
+      normalizeAllShaderBufferIds();
       markBindingsDirty();
     } else {
       const tex = textures.find((t) => t.id === selectedTextureId);
@@ -3872,6 +4046,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderTextureList();
     renderPreview();
     updateTextureDeclarationsEditor();
+    const currentShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
+    renderShaderBufferList(currentShader);
+    updateShaderBindingsEditor(currentShader);
   });
 
   zSlice.addEventListener('input', () => {
@@ -3972,6 +4149,124 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   attachGutterAutoSize(shaderEditor, shaderGutter);
   attachGutterAutoSize(functionEditor, functionGutter);
+
+  const getDefaultShaderBufferIds = () => textures.slice(0, MAX_SHADER_BUFFERS).map((t) => t.id);
+
+  const normalizeShaderBufferIds = (shader) => {
+    if (!shader) return [];
+    let ids = Array.isArray(shader.bufferIds) ? shader.bufferIds.filter(Boolean) : [];
+    const valid = new Set(textures.map((t) => t.id));
+    ids = ids.filter((id) => valid.has(id));
+    if (!ids.length && textures.length) ids = getDefaultShaderBufferIds();
+    if (ids.length > MAX_SHADER_BUFFERS) ids = ids.slice(0, MAX_SHADER_BUFFERS);
+    shader.bufferIds = ids;
+    return ids;
+  };
+
+  const normalizeAllShaderBufferIds = () => {
+    shaders.forEach((shader) => normalizeShaderBufferIds(shader));
+  };
+
+  const getShaderSelectedTextures = (shader) => {
+    const ids = normalizeShaderBufferIds(shader);
+    if (!ids.length) return [];
+    const idSet = new Set(ids);
+    const selected = [];
+    textures.forEach((tex) => {
+      if (idSet.has(tex.id)) selected.push(tex);
+    });
+    return selected.slice(0, MAX_SHADER_BUFFERS);
+  };
+
+  const buildBufferDeclarationsWGSLForTextures = (list) => {
+    return (list || [])
+      .map((tex, idx) => {
+        const name = sanitizedIdentifier(tex.name || `Buffer${idx + 1}`, `Buffer${idx + 1}`);
+        const scalar = tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32');
+        return `@group(0) @binding(${idx}) var<storage, read_write> ${name} : array<${scalar}>;`;
+      })
+      .join('\n');
+  };
+
+  const buildUniformDeclarationsWGSL = () => {
+    return [
+      `@group(0) @binding(${UNIFORM_BINDINGS.step}) var<uniform> step : u32;`,
+      `@group(0) @binding(${UNIFORM_BINDINGS.mouseX}) var<uniform> mouseX : u32;`,
+      `@group(0) @binding(${UNIFORM_BINDINGS.mouseY}) var<uniform> mouseY : u32;`,
+      `@group(0) @binding(${UNIFORM_BINDINGS.mouseZ}) var<uniform> mouseZ : u32;`,
+      `@group(0) @binding(${UNIFORM_BINDINGS.mouseBtn}) var<uniform> mouseBtn : u32;`,
+      `@group(0) @binding(${UNIFORM_BINDINGS.key}) var<uniform> key : u32; // VK codes`,
+    ].join('\n');
+  };
+
+  const updateShaderBindingsEditor = (shader) => {
+    if (!shaderBindingsEditor) return;
+    if (!shader) {
+      shaderBindingsEditor.value = '';
+      return;
+    }
+    const selected = getShaderSelectedTextures(shader);
+    shaderBindingsEditor.value = selected.length
+      ? buildBufferDeclarationsWGSLForTextures(selected)
+      : '// (aucun buffer sélectionné)';
+  };
+
+  const renderShaderBufferList = (shader) => {
+    if (!shaderBufferList) return;
+    shaderBufferList.innerHTML = '';
+    if (!shader) {
+      shaderBufferList.textContent = t('shaders.none_selected', null, 'Aucun compute shader sélectionné.');
+      return;
+    }
+    if (!textures.length) {
+      shaderBufferList.textContent = t('buffers.empty', null, 'Aucun buffer. Ajoutez-en un.');
+      updateShaderBindingsEditor(shader);
+      return;
+    }
+    const ids = normalizeShaderBufferIds(shader);
+    const idSet = new Set(ids);
+    const selectedOrder = getShaderSelectedTextures(shader);
+    const bindingById = new Map();
+    selectedOrder.forEach((tex, idx) => bindingById.set(tex.id, idx));
+
+    textures.forEach((tex) => {
+      const row = document.createElement('label');
+      row.className = 'buffer-select-item';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = idSet.has(tex.id);
+      const bindingLabel = bindingById.has(tex.id)
+        ? `#${bindingById.get(tex.id)}`
+        : '—';
+      const name = tex.name || `Buffer${bindingById.get(tex.id) ?? ''}`;
+      const info = document.createElement('span');
+      info.textContent = `${bindingLabel} · ${name}`;
+      checkbox.addEventListener('change', () => {
+        let next = normalizeShaderBufferIds(shader);
+        if (checkbox.checked) {
+          if (next.length >= MAX_SHADER_BUFFERS) {
+            checkbox.checked = false;
+            logConsole(`Limite de ${MAX_SHADER_BUFFERS} buffers par shader atteinte.`, 'compile');
+            return;
+          }
+          next = [...next, tex.id];
+        } else {
+          next = next.filter((id) => id !== tex.id);
+        }
+        shader.bufferIds = next;
+        normalizeShaderBufferIds(shader);
+        renderShaderBufferList(shader);
+        updateShaderBindingsEditor(shader);
+        updateTextureDeclarationsEditor();
+        markBindingsDirty();
+        isCompiled = false;
+        updateButtons();
+      });
+      row.appendChild(checkbox);
+      row.appendChild(info);
+      shaderBufferList.appendChild(row);
+    });
+  };
 
   function buildTextureFromForm() {
     const formData = new FormData(textureForm);
@@ -4605,14 +4900,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     append('// --- Système ---\n');
 
-    const bindingOffset = textures.length;
+    const bindingOffset = USER_BINDING_OFFSET;
     const primaryTextureName = textures[0]
-      ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
+      ? sanitizedIdentifier(textures[0].name || 'Buffer1', 'Buffer1')
       : null;
     const primaryTextureType = textures[0]?.type || null;
 
     const shaderSectionBuilt = buildShaderSectionWithMap(bindingOffset, primaryTextureName, primaryTextureType);
-    const stepSection = buildStepDeclarationWGSL(textureSection, shaderSectionBuilt.code);
+    const stepSection = buildStepDeclarationWGSL();
     pushSegment('system', 'step', 'system', stepSection);
     append('\n\n');
 
@@ -4659,7 +4954,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     };
 
     append('// --- Textures ---\n');
-    const textureSection = buildTextureDeclarationsWGSL();
+    const selectedTextures = getShaderSelectedTextures(shader);
+    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures);
     if ((textureSection || '').trim()) {
       pushSegment('system', 'textures', 'textures', textureSection);
       append('\n\n');
@@ -4676,7 +4972,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       primaryTextureName,
       primaryTextureType,
     );
-    const stepSection = buildStepDeclarationWGSL(textureSection, shaderCode);
+    const stepSection = buildStepDeclarationWGSL();
     pushSegment('system', 'step', 'system', stepSection);
     append('\n\n');
 
@@ -4732,7 +5028,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     };
 
     append('// --- Textures ---\n');
-    const textureSection = buildTextureDeclarationsWGSL();
+    const baseShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
+    const selectedTextures = getShaderSelectedTextures(baseShader);
+    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures);
     if ((textureSection || '').trim()) {
       pushSegment('system', 'textures', 'textures', textureSection);
       append('\n\n');
@@ -4742,14 +5040,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     append('// --- Système ---\n');
     const declSeen = new Set();
-    const dummyShaderCode = normalizeComputeCode(
+    normalizeComputeCode(
       '',
       bindingOffset,
       declSeen,
       primaryTextureName,
       primaryTextureType,
     );
-    const stepSection = buildStepDeclarationWGSL(textureSection, dummyShaderCode);
+    const stepSection = buildStepDeclarationWGSL();
     pushSegment('system', 'step', 'system', stepSection);
     append('\n\n');
 
@@ -4781,13 +5079,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function buildTextureDeclarationsWGSL() {
-    return textures
-      .map((tex, idx) => {
-        const name = sanitizedIdentifier(tex.name || `texture${idx + 1}`, `texture${idx + 1}`);
-        const scalar = tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32');
-        return `@group(0) @binding(${idx}) var<storage, read_write> ${name} : array<${scalar}>;`;
-      })
-      .join('\n');
+    return buildBufferDeclarationsWGSLForTextures(textures.slice(0, MAX_SHADER_BUFFERS));
   }
 
   function buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType) {
@@ -4804,49 +5096,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       .join('\n\n');
   }
 
-  function buildStepDeclarationWGSL(textureSection, shaderSection) {
-    const bindingRegex = /@binding\(\s*(\d+)\s*\)/g;
-    let maxBinding = -1;
-    const updateMax = (src) => {
-      let m = null;
-      while ((m = bindingRegex.exec(src)) !== null) {
-        const val = parseInt(m[1], 10);
-        if (!Number.isNaN(val)) maxBinding = Math.max(maxBinding, val);
-      }
-    };
-    updateMax(textureSection);
-    updateMax(shaderSection);
-    const stepBinding = (maxBinding >= 0 ? maxBinding + 1 : 0);
-    const mouseXBinding = stepBinding + 1;
-    const mouseYBinding = stepBinding + 2;
-    const mouseZBinding = stepBinding + 3;
-    const mouseBtnBinding = stepBinding + 4;
-    const keyBinding = stepBinding + 5;
-    return [
-      `@group(0) @binding(${stepBinding}) var<uniform> step : u32;`,
-      `@group(0) @binding(${mouseXBinding}) var<uniform> mouseX : u32;`,
-      `@group(0) @binding(${mouseYBinding}) var<uniform> mouseY : u32;`,
-      `@group(0) @binding(${mouseZBinding}) var<uniform> mouseZ : u32;`,
-      `@group(0) @binding(${mouseBtnBinding}) var<uniform> mouseBtn : u32;`,
-      `@group(0) @binding(${keyBinding}) var<uniform> key : u32; // VK codes`,
-    ].join('\n');
+  function buildStepDeclarationWGSL() {
+    return buildUniformDeclarationsWGSL();
   }
 
   function updateTextureDeclarationsEditor() {
     if (!texturesEditor) return;
-    const textureSection = buildTextureDeclarationsWGSL();
-    const bindingOffset = textures.length;
-    const primaryTextureName = textures[0]
-      ? sanitizedIdentifier(textures[0].name || 'texture0', 'texture0')
-      : null;
-    const primaryTextureType = textures[0]?.type || null;
-    const shaderSection = buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType);
-    const stepSection = buildStepDeclarationWGSL(textureSection, shaderSection);
-    const output = [
-      textureSection || '// (aucun buffer)',
-      stepSection,
-    ].join('\n');
-    texturesEditor.value = output;
+    texturesEditor.value = buildUniformDeclarationsWGSL();
   }
 
   function normalizeComputeCode(code, bindingOffset, declSeen, primaryTextureName, primaryTextureType) {
@@ -4961,7 +5217,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
   }
 
-  function buildComputePipelines(device, module) {
+  function buildComputePipelines(device, shaderModules) {
     computePipelines = [];
     if (!pipeline.length) {
       logConsole('Aucun pipeline défini : module compilé sans pipeline.', 'pipeline');
@@ -4973,14 +5229,27 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       isCompiled = false; updateButtons();
       return;
     }
-    // Construire un layout commun pour tous les pipelines à partir des bindings WGSL détectés
+    // Layout commun: 8 buffers + uniforms fixes
     sharedPipelineLayout = null;
     try {
-      const layoutEntries = deriveLayoutEntriesFromWGSL(lastCompiledWGSL);
-      if (layoutEntries.length) {
-        const bindGroupLayout = device.createBindGroupLayout({ entries: layoutEntries });
-        sharedPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
+      const entries = [];
+      for (let i = 0; i < MAX_SHADER_BUFFERS; i += 1) {
+        entries.push({
+          binding: i,
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: 'storage' },
+        });
       }
+      entries.push(
+        { binding: UNIFORM_BINDINGS.step, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        { binding: UNIFORM_BINDINGS.mouseX, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        { binding: UNIFORM_BINDINGS.mouseY, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        { binding: UNIFORM_BINDINGS.mouseZ, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        { binding: UNIFORM_BINDINGS.mouseBtn, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        { binding: UNIFORM_BINDINGS.key, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      );
+      const bindGroupLayout = device.createBindGroupLayout({ entries });
+      sharedPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
     } catch (err) {
       logConsole(`Impossible de créer le layout commun: ${err.message || err}`, 'pipeline');
     }
@@ -4994,11 +5263,17 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
       const entryPoint = sanitizeEntryName(shader.name);
       try {
+        const moduleEntry = shaderModules.get(shader.id);
+        if (!moduleEntry) {
+          logConsole(`Pipeline ${idx + 1}: module WGSL manquant pour ${shader.name}.`, 'pipeline');
+          isCompiled = false; updateButtons();
+          return;
+        }
         const computePipe = device.createComputePipeline({
           layout: sharedPipelineLayout || 'auto',
-          compute: { module, entryPoint },
+          compute: { module: moduleEntry.module, entryPoint },
         });
-        computePipelines.push({ pipeId: pipeStep.id, pipeline: computePipe });
+        computePipelines.push({ pipeId: pipeStep.id, pipeline: computePipe, shaderId: shader.id });
         logConsole(`Pipeline ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
         isCompiled = true; updateButtons();
       } catch (err) {
@@ -5244,13 +5519,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function uploadInitialTextureBuffers() {
     if (initialUploadDone) return;
-    bindingMetas.forEach((info, binding) => {
-      if (!info.tex) return;
-      const bufEntry = bindingBuffers.get(binding);
-      if (!bufEntry) return;
-      const flat = flattenTextureToTypedArray(info.tex);
+    if (!currentDevice) return;
+    textures.forEach((tex) => {
+      const entry = ensureTextureBuffer(currentDevice, tex);
+      if (!entry) return;
+      const flat = flattenTextureToTypedArray(tex);
       currentDevice.queue.writeBuffer(
-        bufEntry.buffer,
+        entry.buffer,
         0,
         flat.buffer,
         flat.byteOffset,
@@ -5303,10 +5578,16 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     simulationSteps = 0;
     renderStepCounter();
     updateStepCounterBuffer();
-    bindingBuffers.forEach((entry) => {
+    textureBuffers.forEach((entry) => {
       if (entry?.buffer) entry.buffer.destroy();
     });
-    bindingBuffers = new Map();
+    textureBuffers = new Map();
+    uniformBuffers.forEach((buf) => {
+      if (buf?.destroy) buf.destroy();
+    });
+    uniformBuffers = new Map();
+    if (dummyStorageBuffer?.destroy) dummyStorageBuffer.destroy();
+    dummyStorageBuffer = null;
     if (currentDevice && typeof currentDevice.destroy === 'function') {
       currentDevice.destroy();
     }
@@ -5334,6 +5615,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     functionsStore = Array.isArray(data.functions) ? data.functions : [];
     pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
     pipelineShaderChoiceId = data.pipelineShaderChoiceId || shaders[0]?.id || null;
+    normalizeAllShaderBufferIds();
     selectedTextureId = textures[0]?.id || null;
     selectedShaderId = shaders[0]?.id || null;
     selectedFunctionId = functionsStore[0]?.id || null;
@@ -5393,6 +5675,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       name: shaderName,
       workgroup: { x: 8, y: 8, z: 1 },
       code: defaultShaderCode(entryName),
+      bufferIds: getDefaultShaderBufferIds(),
     };
   }
 
@@ -5464,12 +5747,16 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         input.value = '';
         input.disabled = true;
       });
+      renderShaderBufferList(null);
+      updateShaderBindingsEditor(null);
       return;
     }
     inputs.forEach((input) => {
       input.disabled = false;
     });
     shaderForm.shaderName.value = shader.name;
+    renderShaderBufferList(shader);
+    updateShaderBindingsEditor(shader);
   }
 
   function renderShaderEditor(shader) {
@@ -6026,10 +6313,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     regenerateValues(defaultTex);
     textures.push(defaultTex);
     selectedTextureId = defaultTex.id;
+    normalizeAllShaderBufferIds();
     renderTextureList();
     renderForm(defaultTex);
     renderPreview();
     updateTextureDeclarationsEditor();
+    const currentShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
+    renderShaderBufferList(currentShader);
+    updateShaderBindingsEditor(currentShader);
   }
 
   seedInitialShader();

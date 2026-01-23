@@ -374,6 +374,8 @@
           </div>
           <span class="pill subtle" id="shaderLines">0 lignes</span>
         </div>
+        <p class="eyebrow">WGSL bindings</p>
+        <textarea id="shaderBindingsEditor" class="small-code-editor" spellcheck="false" readonly></textarea>
         <div class="code-editor-shell">
           <div class="code-lines" id="shaderGutter"></div>
           <textarea id="shaderEditor" class="code-editor" spellcheck="false"></textarea>
@@ -400,6 +402,11 @@
             <button type="button" class="ghost" id="duplicateShaderBtn" data-i18n="buttons.duplicate">Dupliquer</button>
           </div>
         </form>
+
+        <div class="divider"></div>
+        <p class="eyebrow">Buffers</p>
+        <div class="buffer-select-note">Choisis jusqu’à 8 buffers pour ce shader.</div>
+        <div class="buffer-select-list" id="shaderBufferList"></div>
       </div>
     </section>
 

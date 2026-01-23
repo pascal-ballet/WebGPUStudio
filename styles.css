@@ -1204,6 +1204,58 @@ textarea {
   width: 100%;
 }
 
+.mini-editor {
+  min-height: 120px;
+  height: 160px;
+  width: 100%;
+  resize: vertical;
+}
+
+.divider {
+  height: 1px;
+  width: 100%;
+  background: var(--border);
+  opacity: 0.6;
+  margin: 4px 0;
+}
+
+.buffer-select-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.buffer-select-list {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.buffer-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.buffer-select-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.buffer-select-item span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .grid-3 {
   display: grid;
   gap: 10px;
