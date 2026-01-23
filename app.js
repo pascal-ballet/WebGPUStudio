@@ -1194,6 +1194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const sysTexCount = document.getElementById('sysTexCount');
   const sysTexBytes = document.getElementById('sysTexBytes');
+  const sysWebGpuLimitsCount = document.getElementById('sysWebGpuLimitsCount');
   const sysWebGpuLimits = document.getElementById('sysWebGpuLimits');
 
   let sysRafId = null;
@@ -1314,6 +1315,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     const extracted = extractPrototypeGetters(limits);
     if (extracted && extracted !== limits) return extracted;
     return null;
+  };
+
+  const getLimitsEntries = (limits) => {
+    if (!limits) return [];
+    const out = [];
+    const seen = new Set();
+    const add = (key, value) => {
+      if (!key || key === 'constructor' || seen.has(key)) return;
+      seen.add(key);
+      out.push([key, value]);
+    };
+    try {
+      const proto = Object.getPrototypeOf(limits);
+      if (proto) {
+        Object.getOwnPropertyNames(proto).forEach((name) => {
+          const desc = Object.getOwnPropertyDescriptor(proto, name);
+          if (!desc || typeof desc.get !== 'function') return;
+          try {
+            const v = limits[name];
+            if (typeof v !== 'function') add(name, v);
+          } catch (e) {
+          }
+        });
+      }
+    } catch (e) {
+    }
+    try {
+      Object.keys(limits).forEach((name) => add(name, limits[name]));
+    } catch (e) {
+    }
+    return out;
   };
 
   const setBar = (el, value01) => {
@@ -1478,9 +1510,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (sysWebGpuLimits) {
       if (currentDevice && currentDevice.limits) {
-        const l = currentDevice.limits;
-        sysWebGpuLimits.textContent = `maxBufferSize=${l.maxBufferSize} · maxStorageBufferBindingSize=${l.maxStorageBufferBindingSize} · maxTextureDimension2D=${l.maxTextureDimension2D}`;
+        const entries = getLimitsEntries(currentDevice.limits)
+          .sort(([a], [b]) => a.localeCompare(b));
+        if (sysWebGpuLimitsCount) {
+          sysWebGpuLimitsCount.textContent = entries.length ? String(entries.length) : '—';
+        }
+        sysWebGpuLimits.textContent = entries.length
+          ? entries.map(([k, v]) => `${k}: ${Number.isFinite(v) ? v.toLocaleString() : String(v)}`).join('\n')
+          : '—';
       } else {
+        if (sysWebGpuLimitsCount) sysWebGpuLimitsCount.textContent = '—';
         sysWebGpuLimits.textContent = '—';
       }
     }
