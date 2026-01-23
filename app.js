@@ -1672,6 +1672,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     sysAgentIntervalId = null;
   };
 
+  let agentSystemDisabled = false;
+
   const fetchAgentSystem = async () => {
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), 900);
@@ -1680,6 +1682,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return data;
+    } catch (err) {
+      agentSystemDisabled = true;
+      throw err;
     } finally {
       clearTimeout(to);
     }
@@ -1826,11 +1831,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         stopAgentPoll();
         return;
       }
+      if (agentSystemDisabled) {
+        stopAgentPoll();
+        return;
+      }
       try {
         const data = await fetchAgentSystem();
         updateFromAgent(data);
       } catch (e) {
         setAgentOffline(e);
+        stopAgentPoll();
       }
     };
     tick();
@@ -3181,6 +3191,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateMeasuredRunSpeedLabel();
     updateButtons();
     resetGPUState();
+    textures.forEach((tex) => {
+      if (tex?.fill === 'random') {
+        regenerateValues(tex);
+        return;
+      }
+      if (!Array.isArray(tex.values) || tex.values.length === 0) {
+        ensureValueShape(tex);
+      }
+    });
+    renderTextureList();
+    renderPreview();
     logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
   });
 
@@ -5633,6 +5654,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     textures = Array.isArray(data.textures)
       ? data.textures.map((tex) => ({ ...tex, values: Array.isArray(tex?.values) ? tex.values : [] }))
       : [];
+    textures.forEach((tex) => {
+      if (tex?.fill === 'random') {
+        regenerateValues(tex);
+        return;
+      }
+      if (!Array.isArray(tex.values) || tex.values.length === 0) {
+        ensureValueShape(tex);
+      }
+    });
     shaders = Array.isArray(data.shaders) ? data.shaders : [];
     functionsStore = Array.isArray(data.functions) ? data.functions : [];
     pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
