@@ -353,7 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let bindingMetas = new Map();
   let uniformBuffers = new Map();
   let textureBuffers = new Map();
-  let dummyStorageBuffer = null;
+  let dummyStorageBuffers = new Map();
   let initialUploadDone = false;
   let simulationSteps = 0;
   let stepBinding = UNIFORM_BINDINGS.step;
@@ -1557,7 +1557,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const uniformCount = uniformBuffers.size || 0;
       total += uniformCount * 4;
-      if (dummyStorageBuffer) total += 4;
+      total += (dummyStorageBuffers.size || 0) * 4;
     } catch (e) {
     }
     return total;
@@ -2575,7 +2575,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initialUploadDone = false;
     uniformBuffers = new Map();
     textureBuffers = new Map();
-    dummyStorageBuffer = null;
+    dummyStorageBuffers = new Map();
     sharedPipelineLayout = null;
   }
 
@@ -3212,7 +3212,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const data = JSON.parse(reader.result);
+          const raw = typeof reader.result === 'string' ? reader.result : '';
+          const trimmed = raw.replace(/^\uFEFF/, '').trim();
+          if (trimmed.startsWith('version https://git-lfs.github.com/spec/v1')) {
+            throw new Error('Fichier Git LFS détecté. Le contenu JSON n’est pas présent.');
+          }
+          const data = JSON.parse(trimmed);
           loadProject(data);
           logConsole(`Projet chargé : ${file.name}`, 'load');
         } catch (err) {
@@ -3535,14 +3540,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     ensure('key');
   }
 
-  function ensureDummyStorageBuffer(device) {
+  function ensureDummyStorageBuffer(device, binding) {
     if (!device) return null;
-    if (dummyStorageBuffer) return dummyStorageBuffer;
-    dummyStorageBuffer = device.createBuffer({
+    if (dummyStorageBuffers.has(binding)) return dummyStorageBuffers.get(binding);
+    const buffer = device.createBuffer({
       size: 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    return dummyStorageBuffer;
+    dummyStorageBuffers.set(binding, buffer);
+    return buffer;
   }
 
   function ensureTextureBuffer(device, tex) {
@@ -3593,7 +3599,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           entries.push({ binding: i, resource: { buffer: entry.buffer } });
         }
       } else {
-        const dummy = ensureDummyStorageBuffer(device);
+        const dummy = ensureDummyStorageBuffer(device, i);
         if (dummy) entries.push({ binding: i, resource: { buffer: dummy } });
       }
     }
@@ -3990,6 +3996,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const newTexture = buildTextureFromForm();
     textures.push(newTexture);
     selectedTextureId = newTexture.id;
+    textures.forEach((tex) => {
+      if (tex?.fill === 'random') {
+        regenerateValues(tex);
+        return;
+      }
+      if (!Array.isArray(tex.values) || tex.values.length === 0) {
+        ensureValueShape(tex);
+      }
+    });
     normalizeAllShaderBufferIds();
     markBindingsDirty();
     renderTextureList();
@@ -5586,8 +5601,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (buf?.destroy) buf.destroy();
     });
     uniformBuffers = new Map();
-    if (dummyStorageBuffer?.destroy) dummyStorageBuffer.destroy();
-    dummyStorageBuffer = null;
+    dummyStorageBuffers.forEach((buf) => {
+      if (buf?.destroy) buf.destroy();
+    });
+    dummyStorageBuffers = new Map();
     if (currentDevice && typeof currentDevice.destroy === 'function') {
       currentDevice.destroy();
     }
@@ -5598,7 +5615,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function serializeProject() {
     return {
       version: 1,
-      textures,
+      textures: textures.map((tex) => ({
+        ...tex,
+        values: [],
+      })),
       shaders,
       functions: functionsStore,
       pipeline,
@@ -5610,7 +5630,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!data || typeof data !== 'object') {
       throw new Error('Fichier invalide');
     }
-    textures = Array.isArray(data.textures) ? data.textures : [];
+    textures = Array.isArray(data.textures)
+      ? data.textures.map((tex) => ({ ...tex, values: Array.isArray(tex?.values) ? tex.values : [] }))
+      : [];
     shaders = Array.isArray(data.shaders) ? data.shaders : [];
     functionsStore = Array.isArray(data.functions) ? data.functions : [];
     pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
@@ -5625,6 +5647,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const tex = textures.find((t) => t.id === selectedTextureId);
     if (tex) {
       renderForm(tex);
+      if (!Array.isArray(tex.values) || tex.values.length === 0) {
+        ensureValueShape(tex);
+      }
       renderPreview();
     } else {
       renderForm({ size: { x: 1, y: 1, z: 1 }, type: 'int', fill: 'empty', name: '' });

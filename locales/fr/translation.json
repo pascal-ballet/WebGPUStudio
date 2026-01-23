@@ -203,7 +203,8 @@
   },
   "shaders": {
     "empty": "Aucun compute shader. Ajoutez-en un.",
-    "wgsl_label": "Web GPU Shader Language"
+    "wgsl_label": "Web GPU Shader Language",
+    "bindings_label": "WGSL bindings"
   },
   "wgsl": {
     "none_function": "aucune fonction",
