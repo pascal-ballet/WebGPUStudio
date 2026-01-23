@@ -2578,6 +2578,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateMouseUniformBuffer();
   }
 
+  function stopCurrentExecution(withLog) {
+    isRunning = false;
+    isPaused = false;
+    isCompiled = false;
+    simulationSteps = 0;
+    renderStepCounter();
+    updateStepCounterBuffer();
+    stopTimer();
+    runSpeedMeasured = 0;
+    resetRunSpeedMeasure();
+    updateMeasuredRunSpeedLabel();
+    updateButtons();
+    resetGPUState();
+    textures.forEach((tex) => {
+      if (tex?.fill === 'random') {
+        regenerateValues(tex);
+        return;
+      }
+      if (!Array.isArray(tex.values) || tex.values.length === 0) {
+        ensureValueShape(tex);
+      }
+    });
+    renderTextureList();
+    renderPreview();
+    if (withLog) {
+      logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
+    }
+  }
+
   function markBindingsDirty() {
     bindingsDirty = true;
     prep = null;
@@ -3179,30 +3208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   stopBtn.addEventListener('click', () => { // STOP BUTTON
     if (stopBtn.disabled) return;
-    isRunning  = false;
-    isPaused   = false;
-    isCompiled = false;
-    simulationSteps = 0;
-    renderStepCounter();
-    updateStepCounterBuffer();
-    stopTimer();
-    runSpeedMeasured = 0;
-    resetRunSpeedMeasure();
-    updateMeasuredRunSpeedLabel();
-    updateButtons();
-    resetGPUState();
-    textures.forEach((tex) => {
-      if (tex?.fill === 'random') {
-        regenerateValues(tex);
-        return;
-      }
-      if (!Array.isArray(tex.values) || tex.values.length === 0) {
-        ensureValueShape(tex);
-      }
-    });
-    renderTextureList();
-    renderPreview();
-    logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
+    stopCurrentExecution(true);
   });
 
   if (saveBtn) {
@@ -5651,6 +5657,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!data || typeof data !== 'object') {
       throw new Error('Fichier invalide');
     }
+    stopCurrentExecution(false);
     textures = Array.isArray(data.textures)
       ? data.textures.map((tex) => ({ ...tex, values: Array.isArray(tex?.values) ? tex.values : [] }))
       : [];
