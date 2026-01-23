@@ -588,16 +588,12 @@ select option, select optgroup {
   margin-left: 0;
 }
 
-.toolbar #systemInfoBtn {
+.toolbar-right {
   margin-left: auto;
-}
-
-#helpBtn {
-  margin-left: 0;
-}
-
-#tutosBtn {
-  margin-left: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .examples-menu {
