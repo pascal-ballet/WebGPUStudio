@@ -4818,7 +4818,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       }
       const device = await adapter.requestDevice({
         requiredLimits: {
-          maxStorageBuffersPerShaderStage: 10,
         },
       });
       const module = device.createShaderModule({ code: wgsl });
