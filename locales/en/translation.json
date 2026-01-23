@@ -204,7 +204,8 @@
   "shaders": {
     "empty": "No compute shader yet. Add one.",
     "wgsl_label": "WebGPU Shader Language",
-    "bindings_label": "WGSL bindings"
+    "bindings_label": "WGSL bindings",
+    "buffers_limit_note": "Choose up to 8 buffers for this shader."
   },
   "wgsl": {
     "none_function": "no function",
