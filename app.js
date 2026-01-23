@@ -4089,7 +4089,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function nextTextureDefaultName() {
-    const pattern = /^texture\s*?(\d+)$/i;
+    const pattern = /^buffer\s*?(\d+)$/i;
     let maxIdx = 0;
     textures.forEach((t) => {
       const match = t.name.match(pattern);
@@ -4098,7 +4098,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         if (!Number.isNaN(n)) maxIdx = Math.max(maxIdx, n);
       }
     });
-    return `texture${maxIdx + 1}`;
+    return `Buffer${maxIdx + 1}`;
   }
 
   function buildPipelinePipe(shaderIdParam) {
@@ -5401,8 +5401,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       '@compute @workgroup_size(8, 8, 1)',
       `fn ${entryName}(@builtin(global_invocation_id) gid : vec3<u32>) {`,
       '    let index = gid.y * 64u + gid.x;',
-      '    if (index < arrayLength(&texture1)) {',
-      '        texture1[index] = texture1[index] + 1;',
+      '    if (index < arrayLength(&Buffer1)) {',
+      '        Buffer1[index] = Buffer1[index] + 1;',
       '    }',
       '}',
     ].join('\n');
@@ -6017,7 +6017,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function seedInitialTexture() {
     const defaultTex = {
       id: 'tex-default',
-      name: 'texture1',
+      name: 'Buffer1',
       type: 'int',
       fill: 'random',
       size: { x: 64, y: 32, z: 1 },
