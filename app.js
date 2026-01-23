@@ -732,6 +732,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const helpState = {
     images: [],
     lang: null,
+    themeDir: null,
     index: 0,
     zoom: 1,
     panX: 0,
@@ -748,6 +749,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       ? window.i18next.language
       : (getStoredLanguage() || 'fr');
     return (lang === 'en') ? 'en' : 'fr';
+  };
+
+  const getSafeHelpThemeDir = () => {
+    const theme = (document.documentElement && document.documentElement.dataset && document.documentElement.dataset.theme === 'light')
+      ? 'light'
+      : (getStoredTheme() || 'dark');
+    return theme === 'light' ? 'Light' : 'Dark';
   };
 
   const closeHelpModal = () => {
@@ -825,30 +833,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  const fetchHelpManifest = async (lang) => {
-    const res = await fetch(`Aide/${encodeURIComponent(lang)}/manifest.json`, { cache: 'no-cache' });
+  const fetchHelpManifest = async (lang, themeDir) => {
+    const root = `Aide/${encodeURIComponent(lang)}`;
+    const themed = `${root}/${encodeURIComponent(themeDir)}/manifest.json`;
+    const legacy = `${root}/manifest.json`;
+    let res = await fetch(themed, { cache: 'no-cache' });
+    if (!res.ok) {
+      res = await fetch(legacy, { cache: 'no-cache' });
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   };
 
   const loadHelpImages = async () => {
     const safeLang = getSafeLang();
-    if (helpState.lang === safeLang && helpState.images.length) return;
+    const themeDir = getSafeHelpThemeDir();
+    if (helpState.lang === safeLang && helpState.themeDir === themeDir && helpState.images.length) return;
 
-    const normalize = (lang, json) => {
+    const normalize = (lang, themeDir, json) => {
       const list = Array.isArray(json) ? json : (Array.isArray(json?.images) ? json.images : []);
       return list
-        .map((name) => `Aide/${encodeURIComponent(lang)}/${encodeURIComponent(String(name))}`)
+        .map((name) => `Aide/${encodeURIComponent(lang)}/${encodeURIComponent(themeDir)}/${encodeURIComponent(String(name))}`)
         .filter(Boolean);
     };
 
     let images = [];
     try {
-      images = normalize(safeLang, await fetchHelpManifest(safeLang));
+      images = normalize(safeLang, themeDir, await fetchHelpManifest(safeLang, themeDir));
     } catch (e) {
     }
 
     helpState.lang = safeLang;
+    helpState.themeDir = themeDir;
     helpState.images = images;
     helpState.index = 0;
     if (helpState.images.length) {
@@ -1186,6 +1202,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   let sysLastTs = 0;
   let sysFrameTimes = [];
   let sysFpsSamples = [];
+  let sysFpsAccumMs = 0;
+  let sysFpsAccumFrames = 0;
   let sysGpuUtilSamples = [];
   let sysVramSamples = [];
   let webgpuProbePromise = null;
@@ -1318,6 +1336,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     for (let i = 0; i < n; i += 1) {
       const x = (i / (n - 1)) * (w - 8) + 4;
       const v = samples[i];
+      const t = clamp01((v - minV) / (maxV - minV));
+      const y = (1 - t) * (h - 8) + 4;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+
+  const drawSparkTime = (canvas, samples, minV, maxV, windowMs) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(124, 247, 196, 0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const n = samples.length;
+    if (n <= 1) return;
+    const t1 = samples[n - 1]?.t;
+    const t0 = Number.isFinite(t1) ? (t1 - (Number(windowMs) || 0)) : samples[0]?.t;
+    const denom = (t1 - t0) || 1;
+    for (let i = 0; i < n; i += 1) {
+      const s = samples[i];
+      const x = clamp01((s.t - t0) / denom) * (w - 8) + 4;
+      const v = s.v;
       const t = clamp01((v - minV) / (maxV - minV));
       const y = (1 - t) * (h - 8) + 4;
       if (i === 0) ctx.moveTo(x, y);
@@ -1743,37 +1788,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     sysLastTs = 0;
     sysFrameTimes = [];
     sysFpsSamples = [];
+    sysFpsAccumMs = 0;
+    sysFpsAccumFrames = 0;
   };
 
   const startSystemMonitor = () => {
-    stopSystemMonitor();
+    if (sysRafId) return;
     const loop = (ts) => {
-      if (!systemInfoModal || systemInfoModal.classList.contains('hidden')) {
-        stopSystemMonitor();
-        return;
-      }
+      const systemOpen = Boolean(systemInfoModal && !systemInfoModal.classList.contains('hidden'));
       if (sysLastTs) {
         const dt = ts - sysLastTs;
         sysFrameTimes.push(dt);
         if (sysFrameTimes.length > 120) sysFrameTimes.shift();
-        const fps = dt > 0 ? 1000 / dt : 0;
-        sysFpsSamples.push(fps);
-        if (sysFpsSamples.length > 120) sysFpsSamples.shift();
+        sysFpsAccumMs += dt;
+        sysFpsAccumFrames += 1;
+        if (sysFpsAccumMs >= 120) {
+          const v = (!isRunning || isPaused) ? 0 : (Number.isFinite(runSpeedMeasured) ? runSpeedMeasured : 0);
+          sysFpsSamples.push({ t: ts, v });
+          const keepMs = 60000;
+          while (sysFpsSamples.length && (ts - sysFpsSamples[0].t) > keepMs) sysFpsSamples.shift();
+          sysFpsAccumMs = 0;
+          sysFpsAccumFrames = 0;
+        }
       }
       sysLastTs = ts;
 
       const avgFps = sysFpsSamples.length
-        ? sysFpsSamples.reduce((a, b) => a + b, 0) / sysFpsSamples.length
+        ? sysFpsSamples.reduce((a, b) => a + (b?.v || 0), 0) / sysFpsSamples.length
         : 0;
       const avgFrame = sysFrameTimes.length
         ? sysFrameTimes.reduce((a, b) => a + b, 0) / sysFrameTimes.length
         : 0;
 
-      if (sysFpsValue) sysFpsValue.textContent = avgFps ? `${avgFps.toFixed(1)}` : '—';
-      if (sysFrameTimeValue) sysFrameTimeValue.textContent = avgFrame ? `${avgFrame.toFixed(2)} ms` : '—';
-      setBar(sysFpsBar, clamp01(avgFps / 60));
-      setBar(sysFrameBar, clamp01(avgFrame / 16.67));
-      drawSpark(sysFpsChart, sysFpsSamples.slice(-90), 0, 120);
+      if (systemOpen) {
+        const sliderMax = Number(runSpeedSlider?.max || fsRunSpeedSlider?.max || 240);
+        const simNow = (!isRunning || isPaused) ? 0 : (Number.isFinite(runSpeedMeasured) ? runSpeedMeasured : 0);
+        const simFpsText = `${Math.round(simNow)}/s`;
+        if (sysFpsValue) sysFpsValue.textContent = simFpsText;
+        if (sysFrameTimeValue) sysFrameTimeValue.textContent = avgFrame ? `${avgFrame.toFixed(2)} ms` : '—';
+        setBar(sysFpsBar, sliderMax > 0 ? clamp01(simNow / sliderMax) : 0);
+        setBar(sysFrameBar, clamp01(avgFrame / 16.67));
+        const fpsWindowMs = 30000;
+        const fpsWindow = sysFpsSamples.filter((s) => s && Number.isFinite(s.t) && (ts - s.t) <= fpsWindowMs);
+        let minFps = Infinity;
+        let maxFps = -Infinity;
+        for (let i = 0; i < fpsWindow.length; i += 1) {
+          const v = fpsWindow[i].v;
+          if (!Number.isFinite(v)) continue;
+          if (v < minFps) minFps = v;
+          if (v > maxFps) maxFps = v;
+        }
+        if (!Number.isFinite(minFps) || !Number.isFinite(maxFps)) {
+          minFps = 0;
+          maxFps = 120;
+        }
+        const pad = Math.max(1, (maxFps - minFps) * 0.12);
+        const minV = Math.max(0, minFps - pad);
+        const maxV = Math.max(minV + 1, maxFps + pad);
+        drawSparkTime(sysFpsChart, fpsWindow, minV, maxV, fpsWindowMs);
+        updateSystemApp();
+      }
 
       if (sysHeapValue || sysHeapBar) {
         const mem = performance && performance.memory ? performance.memory : null;
@@ -1788,7 +1862,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      updateSystemApp();
       sysRafId = requestAnimationFrame(loop);
     };
     sysRafId = requestAnimationFrame(loop);
@@ -1838,7 +1911,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.documentElement.classList.remove('system-stacked');
     } catch (e) {
     }
-    stopSystemMonitor();
     stopAgentPoll();
     schedulePreviewResize();
     scheduleSystemLayoutUpdate();
@@ -2273,6 +2345,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
+
+  startSystemMonitor();
 
   if (systemInfoResize && systemInfoModal) {
     let resizing = false;
@@ -2765,16 +2839,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
       })
       .filter((m) => {
-        const key = JSON.stringify({
-          t: m.type,
-          msg: m.message,
-          k: m.resolved?.kind || null,
-          id: m.resolved?.id || null,
-          l: m.resolved?.line || null,
-          c: m.resolved?.col || null,
-          gl: m.globalLoc?.line || null,
-          gc: m.globalLoc?.col || null,
-        });
+        const key = JSON.stringify(m.resolved
+          ? {
+            t: m.type,
+            msg: m.message,
+            k: m.resolved.kind || null,
+            id: m.resolved.id || null,
+            l: m.resolved.line || null,
+            c: m.resolved.col || null,
+          }
+          : {
+            t: m.type,
+            msg: m.message,
+            gl: m.globalLoc?.line || null,
+            gc: m.globalLoc?.col || null,
+          });
         if (dedupe.has(key)) return false;
         dedupe.add(key);
         return true;
@@ -2980,17 +3059,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   pauseBtn.addEventListener('click', () => { // PAUSE BUTTON
     if (pauseBtn.disabled) return;
-    console.log('pause click');
     if (!isRunning) {
-      logConsole('Rien à mettre en pause (pas de run en cours).', 'pause');
-      return;
-    }
-    if (isPaused) {
-      logConsole('Déjà en pause. Cliquez sur Run pour reprendre.', 'pause');
+      logConsole('Rien à mettre en pause. Cliquez sur Run.', 'pause');
       return;
     }
     isPaused = true; updateButtons();
     stopTimer();
+    runSpeedMeasured = 0;
+    updateMeasuredRunSpeedLabel();
     logConsole('Exécution en pause. Cliquez sur Run pour reprendre.', 'pause');
   });
 
@@ -3003,6 +3079,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderStepCounter();
     updateStepCounterBuffer();
     stopTimer();
+    runSpeedMeasured = 0;
+    resetRunSpeedMeasure();
+    updateMeasuredRunSpeedLabel();
     updateButtons();
     resetGPUState();
     logConsole('État GPU réinitialisé. Recompilez pour repartir de zéro.', 'stop');
@@ -4816,10 +4895,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         }
       } catch (e) {
       }
-      const device = await adapter.requestDevice({
-        requiredLimits: {
-        },
-      });
+      const device = await adapter.requestDevice();
       const module = device.createShaderModule({ code: wgsl });
       const info = typeof module.getCompilationInfo === 'function'
         ? await module.getCompilationInfo()
@@ -5239,12 +5315,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderFunctionViews();
     renderPipelineViews();
     updateTextureDeclarationsEditor();
-  }
-
-  function logConsole(message, meta = '') {
-    const time = new Date().toLocaleTimeString();
-    consoleMessages.push({ time, message, meta });
-    renderConsole();
   }
 
   function syncShaderEntryName(shader) {

@@ -12,7 +12,10 @@ A software to learn and teach WebGPU
 
 2- In a terminal, go to the project folder
 
-3- Execute: python3 -m http.server 8000
+3- Execute: Windows : 
+                run "python3 -m http.server 8000" and go to the system-agent folder and run "npm-start"
+            Linux : 
+                ./dev.sh
 
 ## Use it
 
