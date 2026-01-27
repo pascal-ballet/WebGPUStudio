@@ -167,6 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shaderList = document.getElementById('shaderList');
   const shaderForm = document.getElementById('shaderForm');
   const shaderEditor = document.getElementById('shaderEditor');
+  const shaderHighlight = document.getElementById('shaderHighlight');
   const shaderGutter = document.getElementById('shaderGutter');
   const shaderLines = document.getElementById('shaderLines');
   const shaderDiagnostics = document.getElementById('shaderDiagnostics');
@@ -203,6 +204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const moveFunctionDownBtn = document.getElementById('moveFunctionDownBtn');
   const functionForm = document.getElementById('functionForm');
   const functionEditor = document.getElementById('functionEditor');
+  const functionHighlight = document.getElementById('functionHighlight');
   const functionGutter = document.getElementById('functionGutter');
   const functionLines = document.getElementById('functionLines');
   const functionDiagnostics = document.getElementById('functionDiagnostics');
@@ -523,6 +525,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       editor.scrollTop = scrollTop;
       editor.dispatchEvent(new Event('input', { bubbles: true }));
     });
+  }
+
+  const WGSL_BRACE_REGEX = /[(){}]/g;
+
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function highlightWGSL(code) {
+    const escaped = escapeHtml(code || '');
+    return escaped.replace(WGSL_BRACE_REGEX, (match) => {
+      const cls = match === '{' || match === '}' ? 'tok-brace' : 'tok-paren';
+      return `<span class="${cls}">${match}</span>`;
+    });
+  }
+
+  function syncWGSLHighlight(textarea, highlightEl) {
+    if (!textarea || !highlightEl) return;
+    const html = highlightWGSL(textarea.value || '');
+    highlightEl.innerHTML = `${html}\n`;
+    highlightEl.scrollTop = textarea.scrollTop;
+    highlightEl.scrollLeft = textarea.scrollLeft;
   }
 
   const closeExamplesMenu = () => {
@@ -3982,6 +4009,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateFunctionStats(fn.code);
     scheduleLiveDiagnostics();
     renderLineNumbers(functionEditor, functionGutter);
+    syncWGSLHighlight(functionEditor, functionHighlight);
   });
   enableTabIndent(functionEditor);
 
@@ -4183,18 +4211,27 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateTextureDeclarationsEditor();
     scheduleLiveDiagnostics();
     renderLineNumbers(shaderEditor, shaderGutter);
+    syncWGSLHighlight(shaderEditor, shaderHighlight);
   });
   enableTabIndent(shaderEditor);
 
   if (shaderEditor && shaderGutter) {
     shaderEditor.addEventListener('scroll', () => {
       shaderGutter.scrollTop = shaderEditor.scrollTop;
+      if (shaderHighlight) {
+        shaderHighlight.scrollTop = shaderEditor.scrollTop;
+        shaderHighlight.scrollLeft = shaderEditor.scrollLeft;
+      }
     });
   }
 
   if (functionEditor && functionGutter) {
     functionEditor.addEventListener('scroll', () => {
       functionGutter.scrollTop = functionEditor.scrollTop;
+      if (functionHighlight) {
+        functionHighlight.scrollTop = functionEditor.scrollTop;
+        functionHighlight.scrollLeft = functionEditor.scrollLeft;
+      }
     });
   }
 
@@ -4773,6 +4810,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       updateFunctionStats('');
       renderDiagnosticsPanels();
       renderLineNumbers(functionEditor, functionGutter);
+      syncWGSLHighlight(functionEditor, functionHighlight);
       return;
     }
     functionEditor.disabled = false;
@@ -4780,6 +4818,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateFunctionStats(fn.code);
     scheduleLiveDiagnostics();
     renderLineNumbers(functionEditor, functionGutter);
+    syncWGSLHighlight(functionEditor, functionHighlight);
   }
 
   function renderFunctionViews() {
@@ -5871,6 +5910,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       updateShaderLines('');
       renderDiagnosticsPanels();
       renderLineNumbers(shaderEditor, shaderGutter);
+      syncWGSLHighlight(shaderEditor, shaderHighlight);
       return;
     }
     shaderEditor.disabled = false;
@@ -5878,6 +5918,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateShaderLines(shader.code);
     scheduleLiveDiagnostics();
     renderLineNumbers(shaderEditor, shaderGutter);
+    syncWGSLHighlight(shaderEditor, shaderHighlight);
   }
 
   function updateShaderLines(code) {

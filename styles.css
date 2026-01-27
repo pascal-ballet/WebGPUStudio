@@ -6,6 +6,9 @@
   --text: #e6edf7;
   --muted: #9fb3d7;
   --border: rgba(255, 255, 255, 0.08);
+  --wgsl-paren: #7dd3fc;
+  --wgsl-brace: #fca5a5;
+  --wgsl-ident: #e6edf7;
   --shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   --radius: 14px;
   font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
@@ -1148,6 +1151,7 @@ textarea {
   font-size: 14px;
   font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
   resize: vertical;
+  tab-size: 2;
 }
 
 .code-editor {
@@ -1169,6 +1173,48 @@ textarea {
   border: 1px dashed var(--border);
 }
 
+.code-editor-layer {
+  position: relative;
+  background: radial-gradient(circle at 10% 20%, rgba(124, 247, 196, 0.07), transparent 35%),
+              rgba(255, 255, 255, 0.02);
+}
+
+.code-editor-layer .code-highlight {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 12px;
+  z-index: 0;
+  font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--wgsl-ident);
+  pointer-events: none;
+  overflow: auto;
+  scrollbar-width: none;
+  tab-size: 2;
+}
+
+.code-editor-layer .code-highlight::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.code-editor-layer .code-editor {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+  -webkit-text-fill-color: transparent;
+}
+
+.wgsl-highlight .tok-paren { color: var(--wgsl-paren); }
+.wgsl-highlight .tok-brace { color: var(--wgsl-brace); }
+
 .code-editor-shell .code-lines {
   background: rgba(255, 255, 255, 0.01);
   border: 0;
@@ -1182,6 +1228,7 @@ textarea {
   text-align: right;
   overflow-y: auto;
   scrollbar-width: none;
+  tab-size: 2;
 }
 
 .code-editor-shell .code-lines::-webkit-scrollbar {
@@ -1462,7 +1509,9 @@ textarea {
 
 :root[data-theme="light"] .tab.active {
   color: var(--text);
-  border-color: rgba(17, 24, 39, 0.08);
+  background: linear-gradient(120deg, #dbeafe, #fde68a);
+  border-color: rgba(30, 64, 175, 0.22);
+  box-shadow: 0 8px 16px rgba(30, 64, 175, 0.18);
 }
 
 :root[data-theme="light"] .preview-fullscreen-controls {
@@ -1496,6 +1545,12 @@ textarea {
 
 :root[data-theme="light"] .list {
   background: rgba(255, 255, 255, 0.55);
+}
+
+:root[data-theme="light"] {
+  --wgsl-paren: #0ea5e9;
+  --wgsl-brace: #dc2626;
+  --wgsl-ident: #000000;
 }
 
 :root[data-theme="light"] .list-item {
@@ -1532,9 +1587,36 @@ textarea {
               rgba(255, 255, 255, 0.70);
 }
 
+:root[data-theme="light"] .code-editor-layer {
+  background: radial-gradient(circle at 10% 20%, rgba(17, 24, 39, 0.07), transparent 35%),
+              rgba(255, 255, 255, 0.82);
+}
+
 :root[data-theme="light"] .code-editor-shell .code-lines {
   background: rgba(17, 24, 39, 0.02);
-  color: rgba(17, 24, 39, 0.45);
+  color: rgba(17, 24, 39, 0.7);
+}
+
+:root[data-theme="light"] .code-editor-layer .code-highlight {
+  color: #000000;
+  opacity: 1;
+}
+
+:root[data-theme="light"] .wgsl-highlight {
+  color: #000000;
+}
+
+:root[data-theme="light"] .code-editor-layer .code-editor {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+:root[data-theme="light"] .code-editor-layer .code-highlight {
+  z-index: 2;
+}
+
+:root[data-theme="light"] .code-editor-layer .code-editor {
+  z-index: 0;
 }
 
 :root[data-theme="light"] .console-area {
