@@ -315,7 +315,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastRunUiUpdateAt = 0;
   updateButtons()
 
-  const MAX_SHADER_BUFFERS = 8;
+  const MAX_SHADER_BUFFERS = 1000;
   const UNIFORM_BINDINGS = {
     step: 8,
     mouseX: 9,
@@ -325,6 +325,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     key: 13,
   };
   const USER_BINDING_OFFSET = UNIFORM_BINDINGS.key + 1;
+  const BUFFER_BINDING_OFFSET = USER_BINDING_OFFSET;
+
+  const getMaxStorageBindings = (device) => {
+    const maxPerBindGroup = device?.limits?.maxBindingsPerBindGroup;
+    const maxPerStage = device?.limits?.maxStorageBuffersPerShaderStage;
+    let limit = MAX_SHADER_BUFFERS;
+    if (Number.isFinite(maxPerBindGroup) && maxPerBindGroup > BUFFER_BINDING_OFFSET) {
+      limit = Math.min(limit, maxPerBindGroup - BUFFER_BINDING_OFFSET);
+    }
+    if (Number.isFinite(maxPerStage) && maxPerStage > 0) {
+      limit = Math.min(limit, maxPerStage);
+    }
+    return limit;
+  };
 
   let textures = [];
   let selectedTextureId = null;
@@ -346,6 +360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let functionIdsWithErrors = new Set();
   let lintDevicePromise = null;
   let diagnosticsTimer = null;
+  let liveDiagnosticsEnabled = false;
   let lastLiveWGSLCode = '';
   let prep = null;
   let bindingsDirty = true; // force regen des bind groups/read buffers quand besoin
@@ -2792,6 +2807,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function scheduleLiveDiagnostics() {
+    if (!liveDiagnosticsEnabled) return;
     if (diagnosticsTimer) window.clearTimeout(diagnosticsTimer);
     diagnosticsTimer = window.setTimeout(() => {
       runLiveDiagnostics();
@@ -3049,7 +3065,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wgsl = built.code;
     lastCompiledWGSL = wgsl;
     lastWGSLMap = built.map;
-    //alert(wgsl);
+    logLongStringToConsole('WGSL', wgsl);
+    await runLiveDiagnostics();
     const errors = validateWGSL(wgsl);
     if (errors.length === 0) {
       logConsole('Compilation statique : OK.', 'compile');
@@ -3618,16 +3635,19 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const entries = [];
     if (!device) return entries;
     const selected = getShaderSelectedTextures(shader);
-    for (let i = 0; i < MAX_SHADER_BUFFERS; i += 1) {
+    const bufferBindingOffset = BUFFER_BINDING_OFFSET;
+    const maxBindings = getMaxStorageBindings(device);
+    for (let i = 0; i < maxBindings; i += 1) {
       const tex = selected[i] || null;
+      const binding = bufferBindingOffset + i;
       if (tex) {
         const entry = ensureTextureBuffer(device, tex);
         if (entry) {
-          entries.push({ binding: i, resource: { buffer: entry.buffer } });
+          entries.push({ binding, resource: { buffer: entry.buffer } });
         }
       } else {
-        const dummy = ensureDummyStorageBuffer(device, i);
-        if (dummy) entries.push({ binding: i, resource: { buffer: dummy } });
+        const dummy = ensureDummyStorageBuffer(device, binding);
+        if (dummy) entries.push({ binding, resource: { buffer: dummy } });
       }
     }
 
@@ -4192,7 +4212,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   attachGutterAutoSize(shaderEditor, shaderGutter);
   attachGutterAutoSize(functionEditor, functionGutter);
 
-  const getDefaultShaderBufferIds = () => textures.slice(0, MAX_SHADER_BUFFERS).map((t) => t.id);
+  const getDefaultShaderBufferIds = () => textures.slice(0, getMaxStorageBindings(currentDevice)).map((t) => t.id);
 
   const normalizeShaderBufferIds = (shader) => {
     if (!shader) return [];
@@ -4200,7 +4220,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const valid = new Set(textures.map((t) => t.id));
     ids = ids.filter((id) => valid.has(id));
     if (!ids.length && textures.length) ids = getDefaultShaderBufferIds();
-    if (ids.length > MAX_SHADER_BUFFERS) ids = ids.slice(0, MAX_SHADER_BUFFERS);
+    const maxBindings = getMaxStorageBindings(currentDevice);
+    if (ids.length > maxBindings) ids = ids.slice(0, maxBindings);
     shader.bufferIds = ids;
     return ids;
   };
@@ -4217,15 +4238,16 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     textures.forEach((tex) => {
       if (idSet.has(tex.id)) selected.push(tex);
     });
-    return selected.slice(0, MAX_SHADER_BUFFERS);
+    return selected.slice(0, getMaxStorageBindings(currentDevice));
   };
 
-  const buildBufferDeclarationsWGSLForTextures = (list) => {
+  const buildBufferDeclarationsWGSLForTextures = (list, bindingOffset = BUFFER_BINDING_OFFSET) => {
     return (list || [])
       .map((tex, idx) => {
         const name = sanitizedIdentifier(tex.name || `Buffer${idx + 1}`, `Buffer${idx + 1}`);
         const scalar = tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32');
-        return `@group(0) @binding(${idx}) var<storage, read_write> ${name} : array<${scalar}>;`;
+        const binding = bindingOffset + idx;
+        return `@group(0) @binding(${binding}) var<storage, read_write> ${name} : array<${scalar}>;`;
       })
       .join('\n');
   };
@@ -4268,8 +4290,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const ids = normalizeShaderBufferIds(shader);
     const idSet = new Set(ids);
     const selectedOrder = getShaderSelectedTextures(shader);
+    const bindingOffset = BUFFER_BINDING_OFFSET;
     const bindingById = new Map();
-    selectedOrder.forEach((tex, idx) => bindingById.set(tex.id, idx));
+    selectedOrder.forEach((tex, idx) => bindingById.set(tex.id, bindingOffset + idx));
 
     textures.forEach((tex) => {
       const row = document.createElement('label');
@@ -4810,6 +4833,24 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderConsole();
   }
 
+  function logLongStringToConsole(label, text, chunkSize = 10000) {
+    if (text === null || text === undefined) {
+      console.log(label, text);
+      return;
+    }
+    const str = String(text);
+    if (str.length <= chunkSize) {
+      console.log(label, str);
+      return;
+    }
+    const total = Math.ceil(str.length / chunkSize);
+    for (let i = 0; i < total; i += 1) {
+      const start = i * chunkSize;
+      const chunk = str.slice(start, start + chunkSize);
+      console.log(`${label} [${i + 1}/${total}]`, chunk);
+    }
+  }
+
   function renderConsole() {
     if (!consoleArea) return;
     consoleArea.innerHTML = '';
@@ -4931,7 +4972,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       append(`// (${t('wgsl.none_function', null, 'aucune fonction')})\n\n`);
     }
 
-    append('// --- Textures ---\n');
+    append('// --- Buffers ---\n');
     const textureSection = buildTextureDeclarationsWGSL();
     if ((textureSection || '').trim()) {
       pushSegment('system', 'textures', 'textures', textureSection);
@@ -4940,7 +4981,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       append(`// (${t('wgsl.none_texture', null, 'aucune texture')})\n\n`);
     }
 
-    append('// --- Système ---\n');
+    append('// --- Uniforms ---\n');
 
     const bindingOffset = USER_BINDING_OFFSET;
     const primaryTextureName = textures[0]
@@ -4997,7 +5038,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
     append('// --- Textures ---\n');
     const selectedTextures = getShaderSelectedTextures(shader);
-    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures);
+    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures, bindingOffset);
     if ((textureSection || '').trim()) {
       pushSegment('system', 'textures', 'textures', textureSection);
       append('\n\n');
@@ -5072,7 +5113,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     append('// --- Textures ---\n');
     const baseShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
     const selectedTextures = getShaderSelectedTextures(baseShader);
-    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures);
+    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures, bindingOffset);
     if ((textureSection || '').trim()) {
       pushSegment('system', 'textures', 'textures', textureSection);
       append('\n\n');
@@ -5121,7 +5162,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function buildTextureDeclarationsWGSL() {
-    return buildBufferDeclarationsWGSLForTextures(textures.slice(0, MAX_SHADER_BUFFERS));
+    return buildBufferDeclarationsWGSLForTextures(textures.slice(0, getMaxStorageBindings(currentDevice)), BUFFER_BINDING_OFFSET);
   }
 
   function buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType) {
@@ -5271,13 +5312,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       isCompiled = false; updateButtons();
       return;
     }
-    // Layout commun: 8 buffers + uniforms fixes
+    // Layout commun: buffers + uniforms fixes
     sharedPipelineLayout = null;
     try {
       const entries = [];
-      for (let i = 0; i < MAX_SHADER_BUFFERS; i += 1) {
+      const bufferBindingOffset = BUFFER_BINDING_OFFSET;
+      const maxBindings = getMaxStorageBindings(device);
+      for (let i = 0; i < maxBindings; i += 1) {
         entries.push({
-          binding: i,
+          binding: bufferBindingOffset + i,
           visibility: GPUShaderStage.COMPUTE,
           buffer: { type: 'storage' },
         });
