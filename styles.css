@@ -1146,7 +1146,7 @@ textarea {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: var(--code-padding);
   color: var(--text);
   font-size: 14px;
   font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -1161,8 +1161,15 @@ textarea {
               rgba(255, 255, 255, 0.02);
   border: 1px dashed var(--border);
   outline: none;
-  line-height: 20px;
+  padding: var(--code-padding);
+  box-sizing: border-box;
+  line-height: var(--code-line-height);
   letter-spacing: 0.02em;
+  font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: var(--code-font-size);
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .code-editor-shell {
@@ -1171,6 +1178,9 @@ textarea {
   border-radius: 12px;
   overflow: hidden;
   border: 1px dashed var(--border);
+  --code-line-height: 20px;
+  --code-font-size: 14px;
+  --code-padding: 12px;
 }
 
 .code-editor-layer {
@@ -1183,14 +1193,16 @@ textarea {
   position: absolute;
   inset: 0;
   margin: 0;
-  padding: 12px;
+  padding: var(--code-padding);
+  box-sizing: border-box;
   z-index: 0;
   font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--code-font-size);
+  line-height: var(--code-line-height);
   letter-spacing: 0.02em;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
   color: var(--wgsl-ident);
   pointer-events: none;
   overflow: auto;
@@ -1221,19 +1233,26 @@ textarea {
   border-right: 1px dashed var(--border);
   padding: 12px;
   font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--code-font-size);
+  line-height: var(--code-line-height);
   letter-spacing: 0.02em;
   color: rgba(255, 255, 255, 0.5);
   text-align: right;
   overflow-y: auto;
   scrollbar-width: none;
   tab-size: 2;
+  box-sizing: border-box;
 }
 
 .code-editor-shell .code-lines::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+.code-editor-shell .code-lines .code-line-num {
+  display: block;
+  height: var(--code-line-height);
+  line-height: var(--code-line-height);
 }
 
 .code-editor-shell .code-lines .code-line-num.error {

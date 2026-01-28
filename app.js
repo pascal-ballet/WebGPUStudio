@@ -548,8 +548,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!textarea || !highlightEl) return;
     const html = highlightWGSL(textarea.value || '');
     highlightEl.innerHTML = `${html}\n`;
-    highlightEl.scrollTop = textarea.scrollTop;
-    highlightEl.scrollLeft = textarea.scrollLeft;
+    syncHighlightScroll(textarea, highlightEl);
   }
 
   const closeExamplesMenu = () => {
@@ -2177,7 +2176,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!textarea || !gutter) return;
     const h = textarea.getBoundingClientRect().height;
     if (!Number.isFinite(h) || h <= 0) return;
-    gutter.style.height = `${Math.round(h)}px`;
+    gutter.style.height = `${h}px`;
   }
 
   function renderLineNumbers(textarea, gutter, errorLines = new Set()) {
@@ -2193,7 +2192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     gutter.innerHTML = '';
     gutter.appendChild(fragment);
-    gutter.scrollTop = textarea.scrollTop;
+    syncGutterScroll(textarea, gutter);
     syncGutterHeight(textarea, gutter);
   }
 
@@ -4218,21 +4217,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   if (shaderEditor && shaderGutter) {
     shaderEditor.addEventListener('scroll', () => {
-      shaderGutter.scrollTop = shaderEditor.scrollTop;
-      if (shaderHighlight) {
-        shaderHighlight.scrollTop = shaderEditor.scrollTop;
-        shaderHighlight.scrollLeft = shaderEditor.scrollLeft;
-      }
+      syncGutterScroll(shaderEditor, shaderGutter);
+      if (shaderHighlight) syncHighlightScroll(shaderEditor, shaderHighlight);
     });
   }
 
   if (functionEditor && functionGutter) {
     functionEditor.addEventListener('scroll', () => {
-      functionGutter.scrollTop = functionEditor.scrollTop;
-      if (functionHighlight) {
-        functionHighlight.scrollTop = functionEditor.scrollTop;
-        functionHighlight.scrollLeft = functionEditor.scrollLeft;
-      }
+      syncGutterScroll(functionEditor, functionGutter);
+      if (functionHighlight) syncHighlightScroll(functionEditor, functionHighlight);
     });
   }
 
@@ -4247,8 +4240,43 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
   }
 
+  function snapEditorHeightToLine(textarea) {
+    if (!textarea) return;
+    const style = window.getComputedStyle(textarea);
+    const lineHeight = parseFloat(style.lineHeight);
+    const padTop = parseFloat(style.paddingTop) || 0;
+    const padBottom = parseFloat(style.paddingBottom) || 0;
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
+    const innerHeight = textarea.clientHeight - padTop - padBottom;
+    if (!Number.isFinite(innerHeight) || innerHeight <= 0) return;
+    const lines = Math.max(1, Math.floor(innerHeight / lineHeight));
+    const snappedInner = lines * lineHeight;
+    const snappedTotal = snappedInner + padTop + padBottom;
+    if (Math.abs(textarea.clientHeight - snappedTotal) >= 0.5) {
+      textarea.style.height = `${snappedTotal}px`;
+    }
+  }
+
+  function attachEditorHeightSnap(textarea, gutter, highlight) {
+    if (!textarea) return;
+    const applySnap = () => {
+      snapEditorHeightToLine(textarea);
+      if (gutter) syncGutterHeight(textarea, gutter);
+      if (highlight) syncHighlightScroll(textarea, highlight);
+    };
+    applySnap();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => applySnap());
+      ro.observe(textarea);
+    } else {
+      window.addEventListener('resize', () => applySnap());
+    }
+  }
+
   attachGutterAutoSize(shaderEditor, shaderGutter);
   attachGutterAutoSize(functionEditor, functionGutter);
+  attachEditorHeightSnap(shaderEditor, shaderGutter, shaderHighlight);
+  attachEditorHeightSnap(functionEditor, functionGutter, functionHighlight);
 
   const getDefaultShaderBufferIds = () => textures.slice(0, getMaxStorageBindings(currentDevice)).map((t) => t.id);
 
@@ -6476,3 +6504,19 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   seedInitialTexture();
   updateTextureDeclarationsEditor();
 });
+  function syncHighlightScroll(textarea, highlightEl) {
+    if (!textarea || !highlightEl) return;
+    const maxText = textarea.scrollHeight - textarea.clientHeight;
+    const maxHighlight = highlightEl.scrollHeight - highlightEl.clientHeight;
+    const ratio = maxText > 0 ? textarea.scrollTop / maxText : 0;
+    highlightEl.scrollTop = ratio * maxHighlight;
+    highlightEl.scrollLeft = textarea.scrollLeft;
+  }
+
+  function syncGutterScroll(textarea, gutter) {
+    if (!textarea || !gutter) return;
+    const maxText = textarea.scrollHeight - textarea.clientHeight;
+    const maxGutter = gutter.scrollHeight - gutter.clientHeight;
+    const ratio = maxText > 0 ? textarea.scrollTop / maxText : 0;
+    gutter.scrollTop = ratio * maxGutter;
+  }
