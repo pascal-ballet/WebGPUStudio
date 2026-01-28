@@ -1170,6 +1170,12 @@ textarea {
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
+  scrollbar-width: none;
+}
+
+.code-editor::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .code-editor-shell {
