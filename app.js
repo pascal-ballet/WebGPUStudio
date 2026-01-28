@@ -2634,7 +2634,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateButtons();
     resetGPUState();
     textures.forEach((tex) => {
-      if (tex?.fill === 'random') {
+      if (tex?.fill === 'random' || tex?.fill === 'empty') {
         regenerateValues(tex);
         return;
       }
@@ -4072,7 +4072,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     textures.push(newTexture);
     selectedTextureId = newTexture.id;
     textures.forEach((tex) => {
-      if (tex?.fill === 'random') {
+      if (tex?.fill === 'random' || tex?.fill === 'empty') {
         regenerateValues(tex);
         return;
       }
