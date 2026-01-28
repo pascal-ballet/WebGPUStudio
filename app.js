@@ -153,10 +153,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const tabs = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
-  const textureList = document.getElementById('textureList');
-  const textureForm = document.getElementById('textureForm');
-  const addBtn = document.getElementById('addTextureBtn');
-  const removeBtn = document.getElementById('removeTextureBtn');
+  const buffersList = document.getElementById('textureList');
+  const bufferForm = document.getElementById('textureForm');
+  const addBufferBtn = document.getElementById('addBufferBtn');
+  const removeBufferBtn = document.getElementById('removeTextureBtn');
   const regenBtn = document.getElementById('regenValuesBtn');
   const preview2D = document.getElementById('preview2D');
   const preview3D = document.getElementById('preview3D');
@@ -4067,8 +4067,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderPipelineViews();
   });
 
-  addBtn.addEventListener('click', () => {
-    const newTexture = buildTextureFromForm();
+  addBufferBtn.addEventListener('click', () => {
+    const newTexture = buildBufferFromForm();
     textures.push(newTexture);
     selectedTextureId = newTexture.id;
     textures.forEach((tex) => {
@@ -4091,7 +4091,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateShaderBindingsEditor(currentShader);
   });
 
-  removeBtn.addEventListener('click', () => {
+  removeBufferBtn.addEventListener('click', () => {
     if (!selectedTextureId) return;
     textures = textures.filter((t) => t.id !== selectedTextureId);
     selectedTextureId = textures[0]?.id || null;
@@ -4118,10 +4118,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderPreview();
   });
 
-  textureForm.addEventListener('submit', (e) => {
+  bufferForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!selectedTextureId) {
-      const newTexture = buildTextureFromForm();
+      const newTexture = buildBufferFromForm();
       textures.push(newTexture);
       selectedTextureId = newTexture.id;
       normalizeAllShaderBufferIds();
@@ -4370,8 +4370,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     });
   };
 
-  function buildTextureFromForm() {
-    const formData = new FormData(textureForm);
+  function buildBufferFromForm() {
+    const formData = new FormData(bufferForm);
     const size = {
       x: clamp(parseInt(formData.get('sizeX'), 10) || 64, 1, Number.MAX_SAFE_INTEGER),
       y: clamp(parseInt(formData.get('sizeY'), 10) || 32, 1, Number.MAX_SAFE_INTEGER),
@@ -4393,7 +4393,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function applyFormToTexture(tex) {
-    const formData = new FormData(textureForm);
+    const formData = new FormData(bufferForm);
     const proposedName = (formData.get('name') || tex.name).trim().replace(/\s+/g, '');
     const isDuplicate = textures.some(
       (t) => t.id !== tex.id && t.name.toLowerCase() === proposedName.toLowerCase(),
@@ -5929,17 +5929,17 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function renderTextureList() {
-    textureList.innerHTML = '';
+    buffersList.innerHTML = '';
     if (textures.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'list-item';
       empty.textContent = t('buffers.empty', null, 'Aucune texture. Ajoutez-en une.');
-      textureList.appendChild(empty);
-      removeBtn.disabled = true;
+      buffersList.appendChild(empty);
+      removeBufferBtn.disabled = true;
       updateTextureDeclarationsEditor();
       return;
     }
-    removeBtn.disabled = false;
+    removeBufferBtn.disabled = false;
     textures.forEach((tex) => {
       const item = document.createElement('div');
       item.className = `list-item ${tex.id === selectedTextureId ? 'active' : ''}`;
@@ -5952,18 +5952,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         renderTextureList();
         renderPreview();
       });
-      textureList.appendChild(item);
+      buffersList.appendChild(item);
     });
     updateTextureDeclarationsEditor();
   }
 
   function renderForm(tex) {
-    textureForm.name.value = tex.name;
-    textureForm.sizeX.value = tex.size.x;
-    textureForm.sizeY.value = tex.size.y;
-    textureForm.sizeZ.value = tex.size.z;
-    textureForm.type.value = tex.type;
-    textureForm.fill.value = tex.fill;
+    bufferForm.name.value = tex.name;
+    bufferForm.sizeX.value = tex.size.x;
+    bufferForm.sizeY.value = tex.size.y;
+    bufferForm.sizeZ.value = tex.size.z;
+    bufferForm.type.value = tex.type;
+    bufferForm.fill.value = tex.fill;
     updateSliceControl(tex);
   }
 
