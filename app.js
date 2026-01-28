@@ -353,7 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let functionsStore = [];
   let selectedFunctionId = null;
   let consoleMessages = [];
-  let activeTabName = Array.from(tabs).find((t) => t.classList.contains('active'))?.dataset?.tab || 'textures';
+  let activeTabName = Array.from(tabs).find((t) => t.classList.contains('active'))?.dataset?.tab || 'buffers';
   let consoleHasUnreadErrors = false;
   let lastWGSLMap = null;
   let lastLiveWGSLMap = null;
@@ -1089,7 +1089,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         raf = 0;
-        if (activeTabName === 'textures') {
+        if (activeTabName === 'buffers') {
           renderPreview();
         }
       });
@@ -2108,7 +2108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderShaderEditor(shader);
       }
     }
-    if (activeTabName === 'textures') {
+    if (activeTabName === 'buffers') {
       renderPreview();
     }
   }
@@ -2683,7 +2683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (tabName === 'functions') updateTextureDeclarationsEditor();
     renderDiagnosticsPanels();
-    if (tabName === 'textures') {
+    if (tabName === 'buffers') {
       requestAnimationFrame(() => {
         renderPreview();
       });
@@ -2714,7 +2714,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   try {
-    const storedTab = localStorage.getItem('wgstudio.activeTab');
+    let storedTab = localStorage.getItem('wgstudio.activeTab');
+    if (storedTab === 'textures') storedTab = 'buffers';
     if (storedTab && Array.from(tabs).some((t) => t.dataset.tab === storedTab)) {
       activateTab(storedTab);
     }
@@ -5929,12 +5930,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function renderTextureList() {
-    buffersList.innerHTML = '';
+    bufferList.innerHTML = '';
     if (textures.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'list-item';
       empty.textContent = t('buffers.empty', null, 'Aucune texture. Ajoutez-en une.');
-      buffersList.appendChild(empty);
+      bufferList.appendChild(empty);
       removeBufferBtn.disabled = true;
       updateTextureDeclarationsEditor();
       return;
@@ -5952,7 +5953,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         renderTextureList();
         renderPreview();
       });
-      buffersList.appendChild(item);
+      bufferList.appendChild(item);
     });
     updateTextureDeclarationsEditor();
   }
