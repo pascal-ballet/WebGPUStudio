@@ -1108,6 +1108,11 @@ input[type="range"] {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.values-cell.selected {
+  background: rgba(124, 247, 196, 0.22);
+  border-color: rgba(124, 247, 196, 0.35);
+}
+
 .values-cell.header {
   background: rgba(255, 255, 255, 0.08);
   color: var(--muted);

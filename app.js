@@ -394,6 +394,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let valuesRenderForce = false;
   let valuesLastKey = '';
   let valuesLastRange = { sr: -1, er: -1, sc: -1, ec: -1 };
+  let valuesSelection = null;
+  let valuesSelecting = false;
+  let valuesSelectionAnchor = null;
   let mouseXValue = 0;
   let mouseYValue = 0;
   let mouseZValue = 0;
@@ -479,6 +482,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     bufferValuesSpacer.style.width = `${gridWidth}px`;
     bufferValuesSpacer.style.height = `${gridHeight}px`;
 
+    valuesSelection = clampValuesSelection(valuesSelection, tex);
+
     const viewW = bufferValuesGrid.clientWidth || 0;
     const viewH = bufferValuesGrid.clientHeight || 0;
     const scrollLeft = bufferValuesGrid.scrollLeft || 0;
@@ -502,13 +507,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cell = document.createElement('div');
         let text = '';
         let cls = 'values-cell';
-        if (r === 0 && c === 0) {
+        const isHeaderRow = r === 0;
+        const isHeaderCol = c === 0;
+        const isCorner = isHeaderRow && isHeaderCol;
+        const isSelected = isValuesCellSelected(r, c, totalRows, totalCols);
+        if (isCorner) {
           cls += ' header corner';
           text = 'y\\x';
-        } else if (r === 0) {
+        } else if (isHeaderRow) {
           cls += ' header';
           text = String(c - 1);
-        } else if (c === 0) {
+        } else if (isHeaderCol) {
           cls += ' header';
           text = String(tex.size.y - r);
         } else {
@@ -517,6 +526,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const raw = tex.values?.[sliceIndex]?.[y]?.[x];
           text = formatBufferValue(raw === undefined ? 0 : raw, tex.type);
         }
+        if (isSelected) cls += ' selected';
         cell.className = cls;
         cell.textContent = text;
         cell.style.left = `${c * VALUES_CELL_W}px`;
@@ -525,6 +535,117 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
     bufferValuesViewport.replaceChildren(fragment);
+  }
+
+  function clampValuesSelection(selection, tex) {
+    if (!selection || !tex) return selection;
+    const totalCols = tex.size.x + 1;
+    const totalRows = tex.size.y + 1;
+    const clampRow = (v) => Math.max(1, Math.min(totalRows - 1, v));
+    const clampCol = (v) => Math.max(1, Math.min(totalCols - 1, v));
+    const next = { ...selection };
+    if (next.mode === 'row') {
+      next.sr = clampRow(next.sr);
+      next.er = clampRow(next.er);
+      next.sc = 1;
+      next.ec = totalCols - 1;
+    } else if (next.mode === 'col') {
+      next.sc = clampCol(next.sc);
+      next.ec = clampCol(next.ec);
+      next.sr = 1;
+      next.er = totalRows - 1;
+    } else {
+      next.sr = clampRow(next.sr);
+      next.er = clampRow(next.er);
+      next.sc = clampCol(next.sc);
+      next.ec = clampCol(next.ec);
+    }
+    if (next.sr > next.er) [next.sr, next.er] = [next.er, next.sr];
+    if (next.sc > next.ec) [next.sc, next.ec] = [next.ec, next.sc];
+    return next;
+  }
+
+  function isValuesCellSelected(r, c, totalRows, totalCols) {
+    if (!valuesSelection) return false;
+    const sel = valuesSelection;
+    if (r === 0 && c === 0) {
+      return sel.mode === 'rect' && sel.sr === 1 && sel.sc === 1 && sel.er === totalRows - 1 && sel.ec === totalCols - 1;
+    }
+    if (r === 0 && c >= 1) {
+      if (sel.mode === 'col') return c >= sel.sc && c <= sel.ec;
+      if (sel.mode === 'rect') return c >= sel.sc && c <= sel.ec;
+      return false;
+    }
+    if (c === 0 && r >= 1) {
+      if (sel.mode === 'row') return r >= sel.sr && r <= sel.er;
+      if (sel.mode === 'rect') return r >= sel.sr && r <= sel.er;
+      return false;
+    }
+    if (r >= 1 && c >= 1) {
+      if (sel.mode === 'row') return r >= sel.sr && r <= sel.er;
+      if (sel.mode === 'col') return c >= sel.sc && c <= sel.ec;
+      return r >= sel.sr && r <= sel.er && c >= sel.sc && c <= sel.ec;
+    }
+    return false;
+  }
+
+  function getValuesGridCellFromEvent(event, tex) {
+    if (!bufferValuesGrid || !tex) return null;
+    const rect = bufferValuesGrid.getBoundingClientRect();
+    const x = (event.clientX - rect.left) + (bufferValuesGrid.scrollLeft || 0);
+    const y = (event.clientY - rect.top) + (bufferValuesGrid.scrollTop || 0);
+    if (x < 0 || y < 0) return null;
+    const totalCols = tex.size.x + 1;
+    const totalRows = tex.size.y + 1;
+    const c = Math.min(totalCols - 1, Math.max(0, Math.floor(x / VALUES_CELL_W)));
+    const r = Math.min(totalRows - 1, Math.max(0, Math.floor(y / VALUES_ROW_H)));
+    return { r, c, totalRows, totalCols };
+  }
+
+  function beginValuesSelection(cell, tex) {
+    if (!cell || !tex) return;
+    const { r, c, totalRows, totalCols } = cell;
+    if (r === 0 && c === 0) {
+      valuesSelection = { mode: 'rect', sr: 1, er: totalRows - 1, sc: 1, ec: totalCols - 1 };
+      return;
+    }
+    if (r === 0 && c >= 1) {
+      valuesSelection = { mode: 'col', sr: 1, er: totalRows - 1, sc: c, ec: c };
+      valuesSelectionAnchor = { r: 0, c };
+      return;
+    }
+    if (c === 0 && r >= 1) {
+      valuesSelection = { mode: 'row', sr: r, er: r, sc: 1, ec: totalCols - 1 };
+      valuesSelectionAnchor = { r, c: 0 };
+      return;
+    }
+    if (r >= 1 && c >= 1) {
+      valuesSelection = { mode: 'rect', sr: r, er: r, sc: c, ec: c };
+      valuesSelectionAnchor = { r, c };
+    }
+  }
+
+  function updateValuesSelection(cell, tex) {
+    if (!valuesSelection || !valuesSelectionAnchor || !cell || !tex) return;
+    const totalCols = tex.size.x + 1;
+    const totalRows = tex.size.y + 1;
+    if (valuesSelection.mode === 'row') {
+      const r = Math.max(1, Math.min(totalRows - 1, cell.r));
+      valuesSelection.sr = valuesSelectionAnchor.r;
+      valuesSelection.er = r;
+    } else if (valuesSelection.mode === 'col') {
+      const c = Math.max(1, Math.min(totalCols - 1, cell.c));
+      valuesSelection.sc = valuesSelectionAnchor.c;
+      valuesSelection.ec = c;
+    } else {
+      const r = Math.max(1, Math.min(totalRows - 1, cell.r));
+      const c = Math.max(1, Math.min(totalCols - 1, cell.c));
+      valuesSelection.sr = valuesSelectionAnchor.r;
+      valuesSelection.er = r;
+      valuesSelection.sc = valuesSelectionAnchor.c;
+      valuesSelection.ec = c;
+    }
+    valuesSelection = clampValuesSelection(valuesSelection, tex);
   }
 
   const scheduleValuesRender = (() => {
@@ -2891,6 +3012,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (bufferValuesGrid) {
     bufferValuesGrid.addEventListener('scroll', () => scheduleValuesRender());
+    bufferValuesGrid.addEventListener('pointerdown', (e) => {
+      if (!valuesPanelOpen) return;
+      if (e.button !== 0) return;
+      const tex = textures.find((t) => t.id === selectedTextureId);
+      const cell = getValuesGridCellFromEvent(e, tex);
+      if (!cell) return;
+      valuesSelecting = true;
+      valuesSelectionAnchor = null;
+      beginValuesSelection(cell, tex);
+      scheduleValuesRender(true);
+      try {
+        bufferValuesGrid.setPointerCapture(e.pointerId);
+      } catch (err) {
+      }
+      e.preventDefault();
+    });
+    bufferValuesGrid.addEventListener('pointermove', (e) => {
+      if (!valuesSelecting) return;
+      const tex = textures.find((t) => t.id === selectedTextureId);
+      const cell = getValuesGridCellFromEvent(e, tex);
+      if (!cell || !tex) return;
+      updateValuesSelection(cell, tex);
+      scheduleValuesRender();
+    });
+    bufferValuesGrid.addEventListener('pointerup', (e) => {
+      if (!valuesSelecting) return;
+      valuesSelecting = false;
+      try {
+        bufferValuesGrid.releasePointerCapture(e.pointerId);
+      } catch (err) {
+      }
+    });
+    bufferValuesGrid.addEventListener('pointercancel', (e) => {
+      if (!valuesSelecting) return;
+      valuesSelecting = false;
+      try {
+        bufferValuesGrid.releasePointerCapture(e.pointerId);
+      } catch (err) {
+      }
+    });
   }
 
   window.addEventListener('resize', () => scheduleValuesRender(true));
@@ -6161,6 +6322,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       preview3D.innerHTML = '';
       setPreviewValue(0,0,null);
       setMouseUniformPosition(0, 0, 0, false);
+      valuesSelection = null;
+      valuesSelectionAnchor = null;
       scheduleValuesRender(true);
       return;
     }
