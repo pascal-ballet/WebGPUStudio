@@ -131,7 +131,8 @@
     "values": "Val",
     "values_title": "Values",
     "values_empty": "No buffer selected",
-    "values_meta": "Buffer {{name}} · Z={{z}} · {{x}}×{{y}}"
+    "values_meta": "Buffer {{name}} · Z={{z}} · {{x}}×{{y}}",
+    "copy_tsv": "Copy"
   },
   "form": {
     "name": "Name",

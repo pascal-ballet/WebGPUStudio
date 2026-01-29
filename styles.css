@@ -1061,6 +1061,12 @@ input[type="range"] {
   gap: 10px;
 }
 
+.values-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .values-meta {
   color: var(--muted);
   font-size: 12px;

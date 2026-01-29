@@ -239,6 +239,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const bufferValuesViewport = document.getElementById('bufferValuesViewport');
   const bufferValuesMeta = document.getElementById('bufferValuesMeta');
   const bufferValuesEmpty = document.getElementById('bufferValuesEmpty');
+  const bufferValuesCopyBtn = document.getElementById('bufferValuesCopyBtn');
   const examplesBtn = document.getElementById('examplesBtn');
   const examplesMenu = document.getElementById('examplesMenu');
   const tutosBtn = document.getElementById('tutosBtn');
@@ -705,6 +706,68 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
     }
   };
+
+  function getTSVRangesForSelection(selection, tex) {
+    if (!selection || !tex) return null;
+    const totalCols = tex.size.x + 1;
+    const totalRows = tex.size.y + 1;
+    const sel = clampValuesSelection(selection, tex);
+    if (!sel) return null;
+    const sr = Math.max(1, Math.min(totalRows - 1, sel.sr));
+    const er = Math.max(1, Math.min(totalRows - 1, sel.er));
+    const sc = Math.max(1, Math.min(totalCols - 1, sel.sc));
+    const ec = Math.max(1, Math.min(totalCols - 1, sel.ec));
+    return { sr, er, sc, ec };
+  }
+
+  function buildTSVForSelection(selection, tex, sliceIndex) {
+    const range = getTSVRangesForSelection(selection, tex);
+    if (!range) return '';
+    const { sr, er, sc, ec } = range;
+    const lines = [];
+    for (let r = sr; r <= er; r += 1) {
+      const y = tex.size.y - r;
+      const row = [];
+      for (let c = sc; c <= ec; c += 1) {
+        const x = c - 1;
+        const raw = tex.values?.[sliceIndex]?.[y]?.[x];
+        row.push(formatBufferValue(raw === undefined ? 0 : raw, tex.type));
+      }
+      lines.push(row.join('\t'));
+    }
+    return lines.join('\n');
+  }
+
+  async function copyValuesSelectionAsTSV() {
+    const tex = textures.find((t) => t.id === selectedTextureId);
+    if (!tex || !Array.isArray(tex.values)) return;
+    if (!valuesSelections || valuesSelections.length === 0) return;
+    const sliceIndex = clamp(parseInt(zSlice?.value, 10) || 0, 0, tex.size.z - 1);
+    const blocks = valuesSelections
+      .map((sel) => buildTSVForSelection(sel, tex, sliceIndex))
+      .filter((block) => block.length);
+    if (!blocks.length) return;
+    const tsv = blocks.join('\n\n');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tsv);
+        return;
+      }
+    } catch (e) {
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = tsv;
+    textarea.setAttribute('readonly', 'readonly');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+    } catch (e) {
+    }
+    document.body.removeChild(textarea);
+  }
 
   const scheduleValuesRender = (() => {
     return (force = false) => {
@@ -3092,6 +3155,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault();
     });
   }
+
+  if (bufferValuesCopyBtn) {
+    bufferValuesCopyBtn.addEventListener('click', () => {
+      if (!valuesPanelOpen) return;
+      copyValuesSelectionAsTSV();
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const isCopy = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c';
+    if (!isCopy) return;
+    if (!valuesPanelOpen) return;
+    if (!valuesSelections || valuesSelections.length === 0) return;
+    e.preventDefault();
+    copyValuesSelectionAsTSV();
+  });
 
   window.addEventListener('resize', () => scheduleValuesRender(true));
 
