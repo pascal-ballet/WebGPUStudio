@@ -271,6 +271,7 @@
           <div class="toggle-group">
             <button class="toggle" data-mode="2d">2D</button>
             <button class="toggle active" data-mode="3d">3D</button>
+            <button class="toggle" id="previewValuesToggle" data-i18n="preview.values">Val</button>
           </div>
           <button class="ghost small" id="previewFullscreenBtn" data-i18n="preview.fullscreen">Plein écran</button>
         </div>
@@ -299,6 +300,17 @@
         <div class="preview-area">
           <div id="preview2D" class="preview-grid"></div>
           <div id="preview3D" class="preview-stack hidden"></div>
+        </div>
+        <div class="values-panel hidden" id="bufferValuesPanel">
+          <div class="values-header">
+            <p class="eyebrow" data-i18n="preview.values_title">Valeurs</p>
+            <div class="values-meta" id="bufferValuesMeta"></div>
+          </div>
+          <div class="values-grid" id="bufferValuesGrid">
+            <div class="values-spacer" id="bufferValuesSpacer"></div>
+            <div class="values-viewport" id="bufferValuesViewport"></div>
+            <div class="values-empty hidden" id="bufferValuesEmpty" data-i18n="preview.values_empty">Aucun buffer sÃ©lectionnÃ©</div>
+          </div>
         </div>
       </div>
 

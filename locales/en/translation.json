@@ -127,7 +127,11 @@
     "speed": "Speed",
     "fullscreen": "Fullscreen",
     "exit": "Back",
-    "none_selected": "No buffer selected"
+    "none_selected": "No buffer selected",
+    "values": "Val",
+    "values_title": "Values",
+    "values_empty": "No buffer selected",
+    "values_meta": "Buffer {{name}} · Z={{z}} · {{x}}×{{y}}"
   },
   "form": {
     "name": "Name",

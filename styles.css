@@ -858,10 +858,12 @@ select option, select optgroup {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  min-width: 0;
 }
 
 .panel-preview {
   min-height: 0;
+  min-width: 0;
 }
 
 .panel-preview.fullscreen {
@@ -881,6 +883,7 @@ select option, select optgroup {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .panel-title {
@@ -1037,6 +1040,94 @@ input[type="range"] {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+.values-panel {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.values-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.values-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.values-grid {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(6, 9, 18, 0.55);
+  height: 260px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --values-cell-w: 96px;
+  --values-row-h: 24px;
+  min-width: 0;
+  width: 100%;
+}
+
+.values-spacer {
+  width: var(--values-grid-width, 0px);
+  height: var(--values-grid-height, 0px);
+}
+
+.values-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  user-select: text;
+}
+
+.values-cell {
+  position: absolute;
+  width: var(--values-cell-w);
+  height: var(--values-row-h);
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.values-cell.header {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.values-cell.corner {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.values-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  background: rgba(6, 9, 18, 0.65);
+  border-radius: 10px;
 }
 
 .texture-canvas {

@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const preview3D = document.getElementById('preview3D');
   const zSlice = document.getElementById('zSlice');
   const sliceLabel = document.getElementById('sliceLabel');
-  const toggleButtons = document.querySelectorAll('.toggle');
+  const toggleButtons = document.querySelectorAll('.toggle[data-mode]');
 
   const shaderList = document.getElementById('shaderList');
   const shaderForm = document.getElementById('shaderForm');
@@ -232,6 +232,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const fsRunSpeedSlider = document.getElementById('fsRunSpeedSlider');
   const fsRunSpeedLabel = document.getElementById('fsRunSpeedLabel');
   const previewValueLabel = document.getElementById('previewValueLabel');
+  const previewValuesToggle = document.getElementById('previewValuesToggle');
+  const bufferValuesPanel = document.getElementById('bufferValuesPanel');
+  const bufferValuesGrid = document.getElementById('bufferValuesGrid');
+  const bufferValuesSpacer = document.getElementById('bufferValuesSpacer');
+  const bufferValuesViewport = document.getElementById('bufferValuesViewport');
+  const bufferValuesMeta = document.getElementById('bufferValuesMeta');
+  const bufferValuesEmpty = document.getElementById('bufferValuesEmpty');
   const examplesBtn = document.getElementById('examplesBtn');
   const examplesMenu = document.getElementById('examplesMenu');
   const tutosBtn = document.getElementById('tutosBtn');
@@ -382,6 +389,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   let sharedPipelineLayout = null;
   let voxelRenderer = null;
   let previewValueCurrent = null;
+  let valuesPanelOpen = false;
+  let valuesRenderRaf = 0;
+  let valuesRenderForce = false;
+  let valuesLastKey = '';
+  let valuesLastRange = { sr: -1, er: -1, sc: -1, ec: -1 };
   let mouseXValue = 0;
   let mouseYValue = 0;
   let mouseZValue = 0;
@@ -399,6 +411,135 @@ document.addEventListener('DOMContentLoaded', async () => {
     const text = displayVal;
     previewValueLabel.textContent = t('toolbar.value_at', { x, y, value: text }, `Val (${x},${y}) : ${text}`);
   }
+
+  const VALUES_CELL_W = 96;
+  const VALUES_ROW_H = 24;
+  const VALUES_OVERSCAN = 2;
+
+  function formatBufferValue(val, type) {
+    if (val === null || val === undefined) return '';
+    if (type === 'uint') return String((Number(val) || 0) >>> 0);
+    if (type === 'int') return String(Number(val) || 0);
+    if (type === 'float') {
+      const n = Number(val);
+      return Number.isFinite(n) ? String(n) : '0';
+    }
+    return String(val);
+  }
+
+  function setValuesEmpty(message) {
+    if (!bufferValuesEmpty) return;
+    if (message) {
+      bufferValuesEmpty.textContent = message;
+      bufferValuesEmpty.classList.remove('hidden');
+    } else {
+      bufferValuesEmpty.classList.add('hidden');
+    }
+  }
+
+  function updateValuesMeta(tex, sliceIndex) {
+    if (!bufferValuesMeta) return;
+    if (!tex) {
+      bufferValuesMeta.textContent = t('preview.values_empty', null, 'Aucun buffer sélectionné');
+      return;
+    }
+    const meta = t(
+      'preview.values_meta',
+      { name: tex.name, z: sliceIndex, x: tex.size.x, y: tex.size.y },
+      `Buffer ${tex.name} - Z=${sliceIndex} - ${tex.size.x}x${tex.size.y}`
+    );
+    bufferValuesMeta.textContent = meta;
+  }
+
+  function renderBufferValues(force = false) {
+    if (!valuesPanelOpen) return;
+    if (!bufferValuesPanel || !bufferValuesGrid || !bufferValuesViewport || !bufferValuesSpacer) return;
+
+    const tex = textures.find((t) => t.id === selectedTextureId);
+    const sliceIndex = tex ? clamp(parseInt(zSlice?.value, 10) || 0, 0, tex.size.z - 1) : 0;
+    updateValuesMeta(tex, sliceIndex);
+
+    if (!tex || !Array.isArray(tex.values) || tex.size.x <= 0 || tex.size.y <= 0) {
+      bufferValuesSpacer.style.width = '0px';
+      bufferValuesSpacer.style.height = '0px';
+      bufferValuesViewport.replaceChildren();
+      setValuesEmpty(t('preview.values_empty', null, 'Aucun buffer sélectionné'));
+      return;
+    }
+
+    setValuesEmpty(null);
+
+    bufferValuesGrid.style.setProperty('--values-cell-w', `${VALUES_CELL_W}px`);
+    bufferValuesGrid.style.setProperty('--values-row-h', `${VALUES_ROW_H}px`);
+
+    const totalCols = tex.size.x + 1;
+    const totalRows = tex.size.y + 1;
+    const gridWidth = totalCols * VALUES_CELL_W;
+    const gridHeight = totalRows * VALUES_ROW_H;
+    bufferValuesSpacer.style.width = `${gridWidth}px`;
+    bufferValuesSpacer.style.height = `${gridHeight}px`;
+
+    const viewW = bufferValuesGrid.clientWidth || 0;
+    const viewH = bufferValuesGrid.clientHeight || 0;
+    const scrollLeft = bufferValuesGrid.scrollLeft || 0;
+    const scrollTop = bufferValuesGrid.scrollTop || 0;
+
+    const sr = Math.max(0, Math.floor(scrollTop / VALUES_ROW_H) - VALUES_OVERSCAN);
+    const er = Math.min(totalRows - 1, Math.ceil((scrollTop + viewH) / VALUES_ROW_H) + VALUES_OVERSCAN);
+    const sc = Math.max(0, Math.floor(scrollLeft / VALUES_CELL_W) - VALUES_OVERSCAN);
+    const ec = Math.min(totalCols - 1, Math.ceil((scrollLeft + viewW) / VALUES_CELL_W) + VALUES_OVERSCAN);
+
+    const key = `${tex.id}:${sliceIndex}:${totalRows}:${totalCols}`;
+    if (!force && key === valuesLastKey && sr === valuesLastRange.sr && er === valuesLastRange.er && sc === valuesLastRange.sc && ec === valuesLastRange.ec) {
+      return;
+    }
+    valuesLastKey = key;
+    valuesLastRange = { sr, er, sc, ec };
+
+    const fragment = document.createDocumentFragment();
+    for (let r = sr; r <= er; r += 1) {
+      for (let c = sc; c <= ec; c += 1) {
+        const cell = document.createElement('div');
+        let text = '';
+        let cls = 'values-cell';
+        if (r === 0 && c === 0) {
+          cls += ' header corner';
+          text = 'y\\x';
+        } else if (r === 0) {
+          cls += ' header';
+          text = String(c - 1);
+        } else if (c === 0) {
+          cls += ' header';
+          text = String(tex.size.y - r);
+        } else {
+          const x = c - 1;
+          const y = tex.size.y - r;
+          const raw = tex.values?.[sliceIndex]?.[y]?.[x];
+          text = formatBufferValue(raw === undefined ? 0 : raw, tex.type);
+        }
+        cell.className = cls;
+        cell.textContent = text;
+        cell.style.left = `${c * VALUES_CELL_W}px`;
+        cell.style.top = `${r * VALUES_ROW_H}px`;
+        fragment.appendChild(cell);
+      }
+    }
+    bufferValuesViewport.replaceChildren(fragment);
+  }
+
+  const scheduleValuesRender = (() => {
+    return (force = false) => {
+      if (!valuesPanelOpen) return;
+      if (force) valuesRenderForce = true;
+      if (valuesRenderRaf) return;
+      valuesRenderRaf = requestAnimationFrame(() => {
+        valuesRenderRaf = 0;
+        const shouldForce = valuesRenderForce;
+        valuesRenderForce = false;
+        renderBufferValues(shouldForce);
+      });
+    };
+  })();
 
   function renderStepCounter() {
     if (!stepLabel) return;
@@ -2736,6 +2877,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   syncPreviewModeToggles();
+
+  if (previewValuesToggle) {
+    previewValuesToggle.addEventListener('click', () => {
+      valuesPanelOpen = !valuesPanelOpen;
+      previewValuesToggle.classList.toggle('active', valuesPanelOpen);
+      if (bufferValuesPanel) bufferValuesPanel.classList.toggle('hidden', !valuesPanelOpen);
+      if (valuesPanelOpen) {
+        scheduleValuesRender(true);
+      }
+    });
+  }
+
+  if (bufferValuesGrid) {
+    bufferValuesGrid.addEventListener('scroll', () => scheduleValuesRender());
+  }
+
+  window.addEventListener('resize', () => scheduleValuesRender(true));
 
   clearConsoleBtn.addEventListener('click', () => {
     consoleMessages = [];
@@ -6003,6 +6161,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       preview3D.innerHTML = '';
       setPreviewValue(0,0,null);
       setMouseUniformPosition(0, 0, 0, false);
+      scheduleValuesRender(true);
       return;
     }
     const sliceIndex = clamp(parseInt(zSlice.value, 10) || 0, 0, tex.size.z - 1);
@@ -6018,6 +6177,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       preview3D.classList.remove('hidden');
       render3DImage(tex);
     }
+    scheduleValuesRender(true);
   }
 
   function valueToRGBA(val, isFloat) {

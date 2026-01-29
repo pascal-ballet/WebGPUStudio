@@ -127,7 +127,11 @@
     "speed": "Vitesse",
     "fullscreen": "Plein écran",
     "exit": "Retour",
-    "none_selected": "Aucune texture sélectionnée"
+    "none_selected": "Aucune texture sélectionnée",
+    "values": "Val",
+    "values_title": "Valeurs",
+    "values_empty": "Aucun buffer sélectionné",
+    "values_meta": "Buffer {{name}} · Z={{z}} · {{x}}×{{y}}"
   },
   "form": {
     "name": "Nom",
