@@ -394,7 +394,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   let valuesRenderForce = false;
   let valuesLastKey = '';
   let valuesLastRange = { sr: -1, er: -1, sc: -1, ec: -1 };
-  let valuesSelection = null;
+  let valuesSelections = [];
+  let valuesActiveSelectionIndex = -1;
   let valuesSelecting = false;
   let valuesSelectionAnchor = null;
   let mouseXValue = 0;
@@ -482,7 +483,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     bufferValuesSpacer.style.width = `${gridWidth}px`;
     bufferValuesSpacer.style.height = `${gridHeight}px`;
 
-    valuesSelection = clampValuesSelection(valuesSelection, tex);
+    valuesSelections = valuesSelections
+      .map((sel) => clampValuesSelection(sel, tex))
+      .filter(Boolean);
 
     const viewW = bufferValuesGrid.clientWidth || 0;
     const viewH = bufferValuesGrid.clientHeight || 0;
@@ -565,9 +568,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return next;
   }
 
-  function isValuesCellSelected(r, c, totalRows, totalCols) {
-    if (!valuesSelection) return false;
-    const sel = valuesSelection;
+  function isCellSelectedForSelection(sel, r, c, totalRows, totalCols) {
     if (r === 0 && c === 0) {
       return sel.mode === 'rect' && sel.sr === 1 && sel.sc === 1 && sel.er === totalRows - 1 && sel.ec === totalCols - 1;
     }
@@ -589,6 +590,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return false;
   }
 
+  function isValuesCellSelected(r, c, totalRows, totalCols) {
+    if (!valuesSelections || valuesSelections.length === 0) return false;
+    return valuesSelections.some((sel) => isCellSelectedForSelection(sel, r, c, totalRows, totalCols));
+  }
+
   function getValuesGridCellFromEvent(event, tex) {
     if (!bufferValuesGrid || !tex) return null;
     const rect = bufferValuesGrid.getBoundingClientRect();
@@ -602,51 +608,103 @@ document.addEventListener('DOMContentLoaded', async () => {
     return { r, c, totalRows, totalCols };
   }
 
-  function beginValuesSelection(cell, tex) {
+  function inferValuesSelectionMode(cell) {
+    if (!cell) return 'rect';
+    if (cell.r === 0 && cell.c === 0) return 'all';
+    if (cell.r === 0) return 'col';
+    if (cell.c === 0) return 'row';
+    return 'rect';
+  }
+
+  function makeValuesSelection(mode, startCell, endCell, totalRows, totalCols) {
+    if (mode === 'all') {
+      return { mode: 'rect', sr: 1, er: totalRows - 1, sc: 1, ec: totalCols - 1 };
+    }
+    if (mode === 'row') {
+      return { mode: 'row', sr: startCell.r, er: endCell.r, sc: 1, ec: totalCols - 1 };
+    }
+    if (mode === 'col') {
+      return { mode: 'col', sr: 1, er: totalRows - 1, sc: startCell.c, ec: endCell.c };
+    }
+    return { mode: 'rect', sr: startCell.r, er: endCell.r, sc: startCell.c, ec: endCell.c };
+  }
+
+  function beginValuesSelection(cell, tex, opts = {}) {
     if (!cell || !tex) return;
     const { r, c, totalRows, totalCols } = cell;
-    if (r === 0 && c === 0) {
-      valuesSelection = { mode: 'rect', sr: 1, er: totalRows - 1, sc: 1, ec: totalCols - 1 };
-      return;
+    const mode = inferValuesSelectionMode(cell);
+    const additive = Boolean(opts.additive);
+    const extending = Boolean(opts.extend);
+    const hasExisting = valuesSelections.length > 0;
+
+    let anchor = { r, c };
+    if (extending && valuesSelectionAnchor) {
+      anchor = { ...valuesSelectionAnchor };
     }
-    if (r === 0 && c >= 1) {
-      valuesSelection = { mode: 'col', sr: 1, er: totalRows - 1, sc: c, ec: c };
-      valuesSelectionAnchor = { r: 0, c };
-      return;
+
+    if (mode === 'row') {
+      anchor = { r: extending ? anchor.r : r, c: 1 };
+    } else if (mode === 'col') {
+      anchor = { r: 1, c: extending ? anchor.c : c };
     }
-    if (c === 0 && r >= 1) {
-      valuesSelection = { mode: 'row', sr: r, er: r, sc: 1, ec: totalCols - 1 };
-      valuesSelectionAnchor = { r, c: 0 };
-      return;
+
+    const selection = makeValuesSelection(mode, anchor, { r, c }, totalRows, totalCols);
+
+    if (!additive && !extending) {
+      valuesSelections = [selection];
+      valuesActiveSelectionIndex = 0;
+    } else if (additive && !extending) {
+      valuesSelections = [...valuesSelections, selection];
+      valuesActiveSelectionIndex = valuesSelections.length - 1;
+    } else if (extending && hasExisting) {
+      const idx = valuesActiveSelectionIndex >= 0 ? valuesActiveSelectionIndex : valuesSelections.length - 1;
+      valuesSelections = valuesSelections.map((sel, i) => (i === idx ? selection : sel));
+      valuesActiveSelectionIndex = idx;
+    } else {
+      valuesSelections = [selection];
+      valuesActiveSelectionIndex = 0;
     }
-    if (r >= 1 && c >= 1) {
-      valuesSelection = { mode: 'rect', sr: r, er: r, sc: c, ec: c };
-      valuesSelectionAnchor = { r, c };
-    }
+
+    valuesSelectionAnchor = anchor;
   }
 
   function updateValuesSelection(cell, tex) {
-    if (!valuesSelection || !valuesSelectionAnchor || !cell || !tex) return;
+    if (!cell || !tex) return;
+    if (valuesActiveSelectionIndex < 0) return;
     const totalCols = tex.size.x + 1;
     const totalRows = tex.size.y + 1;
-    if (valuesSelection.mode === 'row') {
-      const r = Math.max(1, Math.min(totalRows - 1, cell.r));
-      valuesSelection.sr = valuesSelectionAnchor.r;
-      valuesSelection.er = r;
-    } else if (valuesSelection.mode === 'col') {
-      const c = Math.max(1, Math.min(totalCols - 1, cell.c));
-      valuesSelection.sc = valuesSelectionAnchor.c;
-      valuesSelection.ec = c;
-    } else {
-      const r = Math.max(1, Math.min(totalRows - 1, cell.r));
-      const c = Math.max(1, Math.min(totalCols - 1, cell.c));
-      valuesSelection.sr = valuesSelectionAnchor.r;
-      valuesSelection.er = r;
-      valuesSelection.sc = valuesSelectionAnchor.c;
-      valuesSelection.ec = c;
-    }
-    valuesSelection = clampValuesSelection(valuesSelection, tex);
+    const current = valuesSelections[valuesActiveSelectionIndex];
+    if (!current) return;
+    const mode = current.mode;
+    const anchor = valuesSelectionAnchor || { r: cell.r, c: cell.c };
+    const next = makeValuesSelection(mode, anchor, cell, totalRows, totalCols);
+    valuesSelections = valuesSelections.map((sel, i) => (
+      i === valuesActiveSelectionIndex ? clampValuesSelection(next, tex) : sel
+    ));
   }
+
+  const handleValuesPointerMove = (e) => {
+    if (!valuesSelecting) return;
+    const tex = textures.find((t) => t.id === selectedTextureId);
+    const cell = getValuesGridCellFromEvent(e, tex);
+    if (!cell || !tex) return;
+    updateValuesSelection(cell, tex);
+    scheduleValuesRender();
+    e.preventDefault();
+  };
+
+  const handleValuesPointerUp = (e) => {
+    if (!valuesSelecting) return;
+    valuesSelecting = false;
+    if (bufferValuesGrid) bufferValuesGrid.classList.remove('selecting');
+    window.removeEventListener('pointermove', handleValuesPointerMove);
+    window.removeEventListener('pointerup', handleValuesPointerUp);
+    window.removeEventListener('pointercancel', handleValuesPointerUp);
+    try {
+      if (bufferValuesGrid) bufferValuesGrid.releasePointerCapture(e.pointerId);
+    } catch (err) {
+    }
+  };
 
   const scheduleValuesRender = (() => {
     return (force = false) => {
@@ -3019,38 +3077,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       const cell = getValuesGridCellFromEvent(e, tex);
       if (!cell) return;
       valuesSelecting = true;
-      valuesSelectionAnchor = null;
-      beginValuesSelection(cell, tex);
+      const additive = e.ctrlKey || e.metaKey;
+      const extending = e.shiftKey;
+      beginValuesSelection(cell, tex, { additive, extend: extending });
       scheduleValuesRender(true);
       try {
         bufferValuesGrid.setPointerCapture(e.pointerId);
       } catch (err) {
       }
+      bufferValuesGrid.classList.add('selecting');
+      window.addEventListener('pointermove', handleValuesPointerMove);
+      window.addEventListener('pointerup', handleValuesPointerUp);
+      window.addEventListener('pointercancel', handleValuesPointerUp);
       e.preventDefault();
-    });
-    bufferValuesGrid.addEventListener('pointermove', (e) => {
-      if (!valuesSelecting) return;
-      const tex = textures.find((t) => t.id === selectedTextureId);
-      const cell = getValuesGridCellFromEvent(e, tex);
-      if (!cell || !tex) return;
-      updateValuesSelection(cell, tex);
-      scheduleValuesRender();
-    });
-    bufferValuesGrid.addEventListener('pointerup', (e) => {
-      if (!valuesSelecting) return;
-      valuesSelecting = false;
-      try {
-        bufferValuesGrid.releasePointerCapture(e.pointerId);
-      } catch (err) {
-      }
-    });
-    bufferValuesGrid.addEventListener('pointercancel', (e) => {
-      if (!valuesSelecting) return;
-      valuesSelecting = false;
-      try {
-        bufferValuesGrid.releasePointerCapture(e.pointerId);
-      } catch (err) {
-      }
     });
   }
 
@@ -6322,7 +6361,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       preview3D.innerHTML = '';
       setPreviewValue(0,0,null);
       setMouseUniformPosition(0, 0, 0, false);
-      valuesSelection = null;
+      valuesSelections = [];
+      valuesActiveSelectionIndex = -1;
       valuesSelectionAnchor = null;
       scheduleValuesRender(true);
       return;
