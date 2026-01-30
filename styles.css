@@ -1475,14 +1475,14 @@ textarea {
 }
 
 .timeline-pipe.inactive {
-  border-color: rgba(255, 84, 84, 0.85);
-  box-shadow: 0 0 0 2px rgba(255, 84, 84, 0.16);
-  background: rgba(255, 84, 84, 0.08);
+  border-color: rgba(255, 209, 64, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 209, 64, 0.2);
+  background: rgba(255, 209, 64, 0.08);
 }
 
 .timeline-pipe.inactive.active {
-  border-color: rgba(255, 84, 84, 0.95);
-  box-shadow: 0 0 0 2px rgba(255, 84, 84, 0.28);
+  border-color: rgba(255, 209, 64, 1);
+  box-shadow: 0 0 0 2px rgba(255, 209, 64, 0.32);
 }
 
 .timeline-pipe .badge {

@@ -197,6 +197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pipelineFieldDispatch = pipelineForm.querySelector('.field-dispatch');
   const pipelineFieldRepeat = pipelineForm.querySelector('.field-repeat');
   const pipelineFieldActivated = pipelineForm.querySelector('.field-activated');
+  const pipelineActivatedInput = pipelineForm.querySelector('input[name="pipeActivated"]');
   const functionList = document.getElementById('functionList');
   const addFunctionBtn = document.getElementById('addFunctionBtn');
   const removeFunctionBtn = document.getElementById('removeFunctionBtn');
@@ -4335,6 +4336,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   moveUpBtn.addEventListener('click', () => movePipe(-1));
   moveDownBtn.addEventListener('click', () => movePipe(1));
+
+  if (pipelineActivatedInput) {
+    pipelineActivatedInput.addEventListener('change', () => {
+      const pipe = pipeline.find((s) => s.id === selectedPipeId);
+      if (!pipe || pipe.type !== 'step') return;
+      pipe.activated = pipelineActivatedInput.checked;
+      renderPipelineTimeline();
+    });
+  }
 
   pipelineForm.addEventListener('submit', (e) => {
     e.preventDefault();
