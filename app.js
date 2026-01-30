@@ -196,6 +196,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pipelineFieldShader = pipelineForm.querySelector('.field-shader');
   const pipelineFieldDispatch = pipelineForm.querySelector('.field-dispatch');
   const pipelineFieldRepeat = pipelineForm.querySelector('.field-repeat');
+  const pipelineFieldActivated = pipelineForm.querySelector('.field-activated');
   const functionList = document.getElementById('functionList');
   const addFunctionBtn = document.getElementById('addFunctionBtn');
   const removeFunctionBtn = document.getElementById('removeFunctionBtn');
@@ -4152,6 +4153,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const readTasks = buildTextureReadTasks(currentDevice);
     const dispatchList = expandPipeline(pipeline)
       .map((pipe, idx) => {
+        if ((pipe.type || 'step') === 'step' && pipe.activated === false) {
+          return null;
+        }
         const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
         if (!pipeEntry) {
           logConsole(`Pipeline ${idx + 1}: pipeline introuvable.`, 'run');
@@ -4349,6 +4353,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       pipe.repeat = Math.max(1, rep || pipe.repeat || 1);
     } else if (pipe.type === 'step') {
       pipe.shaderId = formData.get('shaderRef') || pipe.shaderId;
+      pipe.activated = formData.get('pipeActivated') !== null;
       pipe.dispatch = {
         x: clamp(parseInt(formData.get('pDispatchX'), 10) || pipe.dispatch?.x || 1, 1, 65535),
         y: clamp(parseInt(formData.get('pDispatchY'), 10) || pipe.dispatch?.y || 1, 1, 65535),
@@ -4972,6 +4977,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `pipe-${Date.now()}`,
       name: `Pipeline ${idx}`,
       shaderId,
+      activated: true,
       dispatch: { x: 8, y: 4, z: 1 },
     };
   }
@@ -5045,6 +5051,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       block.className = 'timeline-pipe';
       block.draggable = true;
       if (pipe.id === selectedPipeId) block.classList.add('active');
+      if ((pipe.type || 'step') === 'step' && pipe.activated === false) {
+        block.classList.add('inactive');
+      }
       const badge = document.createElement('div');
       badge.className = 'badge';
       badge.textContent = index + 1;
@@ -5090,6 +5099,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!pipe) {
       inputs.forEach((el) => { el.disabled = true; });
       pipelineForm.pipeName.value = '';
+      const activatedInput = pipelineForm.querySelector('input[name="pipeActivated"]');
+      if (activatedInput) activatedInput.checked = true;
       pipelineShaderSelect.innerHTML = '';
       return;
     }
@@ -5098,6 +5109,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     inputs.forEach((el) => { el.disabled = isLoopEnd; });
     if (dispatchFields) dispatchFields.classList.toggle('hidden', isLoopStart || isLoopEnd);
     if (pipelineFieldShader) pipelineFieldShader.classList.toggle('hidden', isLoopStart || isLoopEnd);
+    if (pipelineFieldActivated) pipelineFieldActivated.classList.toggle('hidden', isLoopStart || isLoopEnd);
     if (loopStartFields) loopStartFields.classList.toggle('hidden', !isLoopStart);
     if (loopEndFields) loopEndFields.classList.toggle('hidden', !isLoopEnd);
     const isPipeline = !isLoopStart && !isLoopEnd;
@@ -5106,6 +5118,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       input.required = isPipeline;
       input.disabled = !isPipeline;
     });
+    const activatedInput = pipelineForm.querySelector('input[name="pipeActivated"]');
+    if (activatedInput) {
+      activatedInput.disabled = !isPipeline;
+      activatedInput.checked = pipe.activated !== false;
+    }
     // Handle name field visibility/readonly for loops
     const nameLabel = pipelineForm.querySelector('label:nth-of-type(1)');
     const nameInput = pipelineForm.querySelector('input[name="pipeName"]');
@@ -6221,6 +6238,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     shaders = Array.isArray(data.shaders) ? data.shaders : [];
     functionsStore = Array.isArray(data.functions) ? data.functions : [];
     pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
+    pipeline.forEach((pipe) => {
+      if ((pipe.type || 'step') === 'step' && typeof pipe.activated !== 'boolean') {
+        pipe.activated = true;
+      }
+    });
     pipelineShaderChoiceId = data.pipelineShaderChoiceId || shaders[0]?.id || null;
     normalizeAllShaderBufferIds();
     selectedTextureId = textures[0]?.id || null;

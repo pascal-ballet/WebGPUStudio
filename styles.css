@@ -1474,6 +1474,17 @@ textarea {
   background: linear-gradient(120deg, rgba(124, 247, 196, 0.12), rgba(108, 168, 255, 0.08));
 }
 
+.timeline-pipe.inactive {
+  border-color: rgba(255, 84, 84, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 84, 84, 0.16);
+  background: rgba(255, 84, 84, 0.08);
+}
+
+.timeline-pipe.inactive.active {
+  border-color: rgba(255, 84, 84, 0.95);
+  box-shadow: 0 0 0 2px rgba(255, 84, 84, 0.28);
+}
+
 .timeline-pipe .badge {
   background: rgba(124, 247, 196, 0.12);
   color: var(--text);
