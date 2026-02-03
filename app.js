@@ -5279,6 +5279,30 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return String(rounded);
   }
 
+  function formatParameterValueForWGSL(value) {
+    if (!Number.isFinite(value)) return null;
+    if (Number.isInteger(value)) return String(value);
+    const text = String(value);
+    if (/[.eE]/.test(text)) return text;
+    return `${text}.0`;
+  }
+
+  function buildParameterConstWGSL() {
+    if (!parameters.length) return '';
+    const evaluation = getParameterEvaluation();
+    const lines = [];
+    parameters.forEach((param) => {
+      const name = (param.name || '').trim();
+      if (!name) return;
+      if (evaluation.errors.has(param.id)) return;
+      const value = evaluation.values.get(param.id);
+      const literal = formatParameterValueForWGSL(value);
+      if (literal === null) return;
+      lines.push(`const ${name} = ${literal};`);
+    });
+    return lines.join('\n');
+  }
+
   function buildDefaultParameter() {
     const base = t('parameters.default_name', null, 'Param');
     let idx = parameters.length + 1;
@@ -5804,6 +5828,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       append(t);
     };
 
+    append('// --- Paramètres ---\n');
+    const parametersSection = buildParameterConstWGSL();
+    if ((parametersSection || '').trim()) {
+      pushSegment('system', 'parameters', 'parameters', parametersSection);
+      append('\n\n');
+    } else {
+      append(`// (${t('wgsl.none_parameters', null, 'aucun paramètre')})\n\n`);
+    }
+
     append('// --- Fonctions ---\n');
     if (functionsStore.length) {
       const nonEmpty = functionsStore.filter((f) => (f.code || '').trim().length > 0);
@@ -5884,6 +5917,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       append(t);
     };
 
+    append('// --- Paramètres ---\n');
+    const parametersSection = buildParameterConstWGSL();
+    if ((parametersSection || '').trim()) {
+      pushSegment('system', 'parameters', 'parameters', parametersSection);
+      append('\n\n');
+    } else {
+      append(`// (${t('wgsl.none_parameters', null, 'aucun paramètre')})\n\n`);
+    }
+
     append('// --- Textures ---\n');
     const selectedTextures = getShaderSelectedTextures(shader);
     const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures, bindingOffset);
@@ -5957,6 +5999,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       segments.push({ kind, id, name, startLine, endLine });
       append(t);
     };
+
+    append('// --- Paramètres ---\n');
+    const parametersSection = buildParameterConstWGSL();
+    if ((parametersSection || '').trim()) {
+      pushSegment('system', 'parameters', 'parameters', parametersSection);
+      append('\n\n');
+    } else {
+      append(`// (${t('wgsl.none_parameters', null, 'aucun paramètre')})\n\n`);
+    }
 
     append('// --- Textures ---\n');
     const baseShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
