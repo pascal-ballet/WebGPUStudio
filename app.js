@@ -4897,10 +4897,17 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function buildBufferFromForm() {
     const formData = new FormData(bufferForm);
+    const evaluation = getParameterEvaluation();
+    const nameMap = buildParameterNameMap(evaluation);
+    const sizeInput = {
+      x: String(formData.get('sizeX') ?? '').trim(),
+      y: String(formData.get('sizeY') ?? '').trim(),
+      z: String(formData.get('sizeZ') ?? '').trim(),
+    };
     const size = {
-      x: clamp(parseInt(formData.get('sizeX'), 10) || 64, 1, Number.MAX_SAFE_INTEGER),
-      y: clamp(parseInt(formData.get('sizeY'), 10) || 32, 1, Number.MAX_SAFE_INTEGER),
-      z: clamp(parseInt(formData.get('sizeZ'), 10) || 1, 1, Number.MAX_SAFE_INTEGER),
+      x: clamp(resolveSizeInput(sizeInput.x, 64, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
+      y: clamp(resolveSizeInput(sizeInput.y, 32, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
+      z: clamp(resolveSizeInput(sizeInput.z, 1, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
     };
     const rawName = (formData.get('name') || '').trim().replace(/\s+/g, '');
     const baseName = rawName || nextTextureDefaultName();
@@ -4910,6 +4917,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       type: formData.get('type') || 'int',
       fill: formData.get('fill') || 'empty',
       size,
+      sizeInput,
       values: [],
     };
     regenerateValues(tex);
@@ -4926,13 +4934,21 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (proposedName && !isDuplicate) {
       tex.name = proposedName;
     }
+    const evaluation = getParameterEvaluation();
+    const nameMap = buildParameterNameMap(evaluation);
+    const sizeInput = {
+      x: String(formData.get('sizeX') ?? '').trim(),
+      y: String(formData.get('sizeY') ?? '').trim(),
+      z: String(formData.get('sizeZ') ?? '').trim(),
+    };
     const newSize = {
-      x: clamp(parseInt(formData.get('sizeX'), 10) || tex.size.x, 1, Number.MAX_SAFE_INTEGER),
-      y: clamp(parseInt(formData.get('sizeY'), 10) || tex.size.y, 1, Number.MAX_SAFE_INTEGER),
-      z: clamp(parseInt(formData.get('sizeZ'), 10) || tex.size.z, 1, Number.MAX_SAFE_INTEGER),
+      x: clamp(resolveSizeInput(sizeInput.x, tex.size.x, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
+      y: clamp(resolveSizeInput(sizeInput.y, tex.size.y, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
+      z: clamp(resolveSizeInput(sizeInput.z, tex.size.z, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
     };
     const sizeChanged = newSize.x !== tex.size.x || newSize.y !== tex.size.y || newSize.z !== tex.size.z;
     tex.size = newSize;
+    tex.sizeInput = sizeInput;
     tex.type = formData.get('type') || tex.type;
     tex.fill = formData.get('fill') || tex.fill;
     if (sizeChanged || tex.fill === 'random') {
@@ -5287,6 +5303,29 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return `${text}.0`;
   }
 
+  function buildParameterNameMap(evaluation) {
+    const map = new Map();
+    parameters.forEach((param) => {
+      const name = (param.name || '').trim();
+      if (!name) return;
+      if (evaluation.errors.has(param.id)) return;
+      map.set(name.toLowerCase(), param.id);
+    });
+    return map;
+  }
+
+  function resolveSizeInput(rawValue, fallback, evaluation, nameMap) {
+    const text = String(rawValue ?? '').trim();
+    if (!text) return fallback;
+    const numeric = Number(text);
+    if (Number.isFinite(numeric)) return Math.floor(numeric);
+    const id = nameMap?.get(text.toLowerCase());
+    if (!id) return fallback;
+    const resolved = evaluation.values.get(id);
+    if (!Number.isFinite(resolved)) return fallback;
+    return Math.floor(resolved);
+  }
+
   function buildParameterConstWGSL() {
     if (!parameters.length) return '';
     const evaluation = getParameterEvaluation();
@@ -5301,6 +5340,31 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       lines.push(`const ${name} = ${literal};`);
     });
     return lines.join('\n');
+  }
+
+  function updateTextureSizesFromParameters(evaluation) {
+    if (!textures.length) return;
+    const nameMap = buildParameterNameMap(evaluation);
+    let didChange = false;
+    textures.forEach((tex) => {
+      const sizeInput = tex.sizeInput || {};
+      const nextSize = {
+        x: clamp(resolveSizeInput(sizeInput.x, tex.size.x, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
+        y: clamp(resolveSizeInput(sizeInput.y, tex.size.y, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
+        z: clamp(resolveSizeInput(sizeInput.z, tex.size.z, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
+      };
+      const sizeChanged = nextSize.x !== tex.size.x || nextSize.y !== tex.size.y || nextSize.z !== tex.size.z;
+      if (sizeChanged) {
+        tex.size = nextSize;
+        regenerateValues(tex);
+        didChange = true;
+      }
+    });
+    if (!didChange) return;
+    markBindingsDirty();
+    const current = textures.find((t) => t.id === selectedTextureId);
+    if (current) updateSliceControl(current);
+    renderPreview();
   }
 
   function buildDefaultParameter() {
@@ -5540,6 +5604,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderParameterList(evaluation);
     renderParameterPreview(evaluation);
     renderParameterForm(current, evaluation);
+    updateTextureSizesFromParameters(evaluation);
   }
 
   function applyFormToParameter(param) {
@@ -6602,7 +6667,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
     stopCurrentExecution(false);
     textures = Array.isArray(data.textures)
-      ? data.textures.map((tex) => ({ ...tex, values: Array.isArray(tex?.values) ? tex.values : [] }))
+      ? data.textures.map((tex) => {
+        const size = tex?.size || { x: 1, y: 1, z: 1 };
+        const existing = tex?.sizeInput;
+        const sizeInput = (existing && typeof existing === 'object')
+          ? {
+            x: typeof existing.x === 'string' || typeof existing.x === 'number' ? String(existing.x) : String(size?.x ?? 1),
+            y: typeof existing.y === 'string' || typeof existing.y === 'number' ? String(existing.y) : String(size?.y ?? 1),
+            z: typeof existing.z === 'string' || typeof existing.z === 'number' ? String(existing.z) : String(size?.z ?? 1),
+          }
+          : { x: String(size?.x ?? 1), y: String(size?.y ?? 1), z: String(size?.z ?? 1) };
+        return { ...tex, size, sizeInput, values: Array.isArray(tex?.values) ? tex.values : [] };
+      })
       : [];
     textures.forEach((tex) => {
       if (tex?.fill === 'random') {
@@ -6835,10 +6911,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function renderForm(tex) {
+    const sizeInput = tex.sizeInput || {};
     bufferForm.name.value = tex.name;
-    bufferForm.sizeX.value = tex.size.x;
-    bufferForm.sizeY.value = tex.size.y;
-    bufferForm.sizeZ.value = tex.size.z;
+    bufferForm.sizeX.value = sizeInput.x !== undefined && sizeInput.x !== null && sizeInput.x !== '' ? sizeInput.x : tex.size.x;
+    bufferForm.sizeY.value = sizeInput.y !== undefined && sizeInput.y !== null && sizeInput.y !== '' ? sizeInput.y : tex.size.y;
+    bufferForm.sizeZ.value = sizeInput.z !== undefined && sizeInput.z !== null && sizeInput.z !== '' ? sizeInput.z : tex.size.z;
     bufferForm.type.value = tex.type;
     bufferForm.fill.value = tex.fill;
     updateSliceControl(tex);
@@ -7336,6 +7413,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       type: 'int',
       fill: 'random',
       size: { x: 64, y: 32, z: 1 },
+      sizeInput: { x: '64', y: '32', z: '1' },
       values: [],
     };
     regenerateValues(defaultTex);
