@@ -104,6 +104,7 @@
     "functions": "Functions",
     "shaders": "Compute Shaders",
     "pass": "Pass",
+    "parameters": "Parameters",
     "console": "Console"
   },
   "panels": {
@@ -180,6 +181,28 @@
       "loop_start": "Loop (start)",
       "loop_end": "Loop (end)",
       "no_shader": "No compute shader available"
+    }
+  },
+  "parameters": {
+    "title": "Parameters",
+    "preview_label": "Results",
+    "preview_title": "Computed values",
+    "selected": "Selected parameter",
+    "expression": "Expression",
+    "result": "Result",
+    "empty": "No parameters yet. Add one.",
+    "empty_preview": "Add parameters, e.g. SX = 128 then DispatchMatrix = SX/8.",
+    "default_name": "Param",
+    "errors": {
+      "duplicate": "Name already used.",
+      "empty_name": "Name required.",
+      "invalid_name": "Invalid name (A-Z, 0-9, _).",
+      "empty_expr": "Expression required.",
+      "unknown": "Unknown parameter: {{name}}.",
+      "cycle": "Circular dependency detected.",
+      "dependency": "Invalid dependency.",
+      "invalid": "Invalid expression.",
+      "not_finite": "Non-finite result."
     }
   },
   "functions": {

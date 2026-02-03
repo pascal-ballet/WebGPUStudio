@@ -241,6 +241,7 @@
       <button class="tab" data-tab="functions" data-i18n="tabs.functions">Fonctions</button>
       <button class="tab" data-tab="shaders" data-i18n="tabs.shaders">Compute Shaders</button>
       <button class="tab" data-tab="pass" data-i18n="tabs.pass">Pass</button>
+      <button class="tab" data-tab="parameters" data-i18n="tabs.parameters">Paramètres</button>
       <button class="tab" data-tab="console"><span data-i18n="tabs.console">Console</span> <span class="tab-badge hidden" id="consoleErrorBadge">!</span></button>
     </nav>
 
@@ -502,6 +503,60 @@
           <div id="loopEndFields" class="hidden">
             <p class="meta" data-i18n="pipeline.loop_end_hint">Fin de boucle : aucune propriété à configurer.</p>
           </div>
+
+          <button type="submit" class="solid" data-i18n="buttons.apply">Appliquer</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="tab-content" id="tab-parameters">
+      <div class="panel panel-list">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title" data-i18n="parameters.title">Paramètres</h2>
+          </div>
+          <div class="header-actions">
+            <button class="ghost" id="addParameterBtn" data-i18n="buttons.add">+ Ajouter</button>
+          </div>
+        </div>
+        <div class="list" id="parameterList"></div>
+      </div>
+
+      <div class="panel panel-preview">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow" data-i18n="parameters.preview_label">Résultats</p>
+            <h2 class="panel-title" data-i18n="parameters.preview_title">Valeurs calculées</h2>
+          </div>
+        </div>
+        <div class="parameters-grid" id="parameterPreviewGrid"></div>
+        <div class="parameters-empty hidden" id="parameterPreviewEmpty" data-i18n="parameters.empty_preview">Ajoutez des paramètres, par exemple SX = 128 puis DispatchMatrix = SX/8.</div>
+      </div>
+
+      <div class="panel panel-properties">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow" data-i18n="common.properties">Propriétés</p>
+            <h2 class="panel-title" data-i18n="parameters.selected">Paramètre sélectionné</h2>
+          </div>
+          <button class="ghost danger" id="removeParameterBtn" data-i18n="buttons.delete">Supprimer</button>
+        </div>
+
+        <form id="parameterForm" class="form">
+          <label><span data-i18n="form.name">Nom</span>
+            <input type="text" name="parameterName" required />
+          </label>
+
+          <label><span data-i18n="parameters.expression">Expression</span>
+            <input type="text" name="parameterExpr" placeholder="SX/8" />
+          </label>
+
+          <div class="parameter-result">
+            <span class="eyebrow" data-i18n="parameters.result">Résultat</span>
+            <div class="parameter-value" id="parameterValue">—</div>
+          </div>
+
+          <p class="parameter-note" id="parameterNote"></p>
 
           <button type="submit" class="solid" data-i18n="buttons.apply">Appliquer</button>
         </form>

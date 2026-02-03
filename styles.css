@@ -414,6 +414,7 @@ select option, select optgroup {
   :root.system-open #tab-textures.tab-content.active,
   :root.system-open #tab-shaders.tab-content.active,
   :root.system-open #tab-pass.tab-content.active,
+  :root.system-open #tab-parameters.tab-content.active,
   :root.system-open #tab-functions.tab-content.active {
     grid-template-areas:
       "list preview"
@@ -426,6 +427,7 @@ select option, select optgroup {
   :root.system-open #tab-textures.tab-content.active,
   :root.system-open #tab-shaders.tab-content.active,
   :root.system-open #tab-pass.tab-content.active,
+  :root.system-open #tab-parameters.tab-content.active,
   :root.system-open #tab-functions.tab-content.active {
     grid-template-areas:
       "list"
@@ -450,6 +452,7 @@ select option, select optgroup {
 :root.system-two-col #tab-textures.tab-content.active,
 :root.system-two-col #tab-shaders.tab-content.active,
 :root.system-two-col #tab-pass.tab-content.active,
+:root.system-two-col #tab-parameters.tab-content.active,
 :root.system-two-col #tab-functions.tab-content.active {
   grid-template-areas:
     "list preview"
@@ -823,6 +826,7 @@ select option, select optgroup {
 #tab-textures.tab-content.active,
 #tab-shaders.tab-content.active,
 #tab-pass.tab-content.active,
+#tab-parameters.tab-content.active,
 #tab-functions.tab-content.active {
   grid-template-areas: "list preview props";
   grid-template-columns: minmax(220px, 280px) 1fr minmax(260px, 340px);
@@ -831,6 +835,7 @@ select option, select optgroup {
 #tab-textures.tab-content.active .panel-list,
 #tab-shaders.tab-content.active .panel-list,
 #tab-pass.tab-content.active .panel-list,
+#tab-parameters.tab-content.active .panel-list,
 #tab-functions.tab-content.active .panel-list {
   grid-area: list;
 }
@@ -838,6 +843,7 @@ select option, select optgroup {
 #tab-textures.tab-content.active .panel-preview,
 #tab-shaders.tab-content.active .panel-preview,
 #tab-pass.tab-content.active .panel-preview,
+#tab-parameters.tab-content.active .panel-preview,
 #tab-functions.tab-content.active .panel-preview {
   grid-area: preview;
 }
@@ -845,6 +851,7 @@ select option, select optgroup {
 #tab-textures.tab-content.active .panel-properties,
 #tab-shaders.tab-content.active .panel-properties,
 #tab-pass.tab-content.active .panel-properties,
+#tab-parameters.tab-content.active .panel-properties,
 #tab-functions.tab-content.active .panel-properties {
   grid-area: props;
 }
@@ -994,6 +1001,93 @@ select option, select optgroup {
 .list-item.active {
   border-color: rgba(124, 247, 196, 0.35);
   background: rgba(124, 247, 196, 0.07);
+}
+
+.param-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.param-value.is-error {
+  color: #ff9a9a;
+}
+
+.parameters-grid {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.parameters-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+}
+
+.parameters-row.has-error {
+  border-color: rgba(255, 123, 123, 0.35);
+  background: rgba(255, 123, 123, 0.08);
+}
+
+.parameters-name {
+  font-weight: 600;
+}
+
+.parameters-expr {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.parameters-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.parameters-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.parameter-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.parameter-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.parameter-value.is-error {
+  color: #ff9a9a;
+}
+
+.parameter-note {
+  margin: 0;
+  min-height: 16px;
+  font-size: 12px;
+  color: #ff9a9a;
 }
 
 .preview-meta {
@@ -1799,6 +1893,7 @@ textarea {
   #tab-textures.tab-content.active,
   #tab-shaders.tab-content.active,
   #tab-pass.tab-content.active,
+  #tab-parameters.tab-content.active,
   #tab-functions.tab-content.active {
     grid-template-areas:
       "list preview"
@@ -1811,6 +1906,7 @@ textarea {
   #tab-textures.tab-content.active,
   #tab-shaders.tab-content.active,
   #tab-pass.tab-content.active,
+  #tab-parameters.tab-content.active,
   #tab-functions.tab-content.active {
     grid-template-areas:
       "list"

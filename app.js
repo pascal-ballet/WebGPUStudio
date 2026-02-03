@@ -198,6 +198,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pipelineFieldRepeat = pipelineForm.querySelector('.field-repeat');
   const pipelineFieldActivated = pipelineForm.querySelector('.field-activated');
   const pipelineActivatedInput = pipelineForm.querySelector('input[name="pipeActivated"]');
+  const parameterList = document.getElementById('parameterList');
+  const addParameterBtn = document.getElementById('addParameterBtn');
+  const removeParameterBtn = document.getElementById('removeParameterBtn');
+  const parameterForm = document.getElementById('parameterForm');
+  const parameterPreviewGrid = document.getElementById('parameterPreviewGrid');
+  const parameterPreviewEmpty = document.getElementById('parameterPreviewEmpty');
+  const parameterValue = document.getElementById('parameterValue');
+  const parameterNote = document.getElementById('parameterNote');
   const functionList = document.getElementById('functionList');
   const addFunctionBtn = document.getElementById('addFunctionBtn');
   const removeFunctionBtn = document.getElementById('removeFunctionBtn');
@@ -362,6 +370,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   let pipelineShaderChoiceId = null;
   let functionsStore = [];
   let selectedFunctionId = null;
+  let parameters = [];
+  let selectedParameterId = null;
   let consoleMessages = [];
   let activeTabName = Array.from(tabs).find((t) => t.classList.contains('active'))?.dataset?.tab || 'buffers';
   let consoleHasUnreadErrors = false;
@@ -2483,6 +2493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setRunSpeed(runSpeedSlider?.value || 60);
     if (selectedPipeId) renderPipelineViews();
     if (selectedFunctionId) renderFunctionViews();
+    renderParameterViews();
     if (selectedShaderId) {
       const shader = shaders.find((s) => s.id === selectedShaderId) || shaders[0];
       if (shader) {
@@ -3746,10 +3757,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       shaders = [];
       functionsStore = [];
       pipeline = [];
+      parameters = [];
       selectedTextureId = null;
       selectedShaderId = null;
       selectedFunctionId = null;
       selectedPipeId = null;
+      selectedParameterId = null;
       pipelineShaderChoiceId = null;
       markBindingsDirty();
       seedInitialShader();
@@ -3760,6 +3773,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderShaderList();
       renderFunctionList();
       renderPipelineViews();
+      renderParameterViews();
       renderPreview();
       logConsole('Nouveau projet créé.', 'project');
     });
@@ -4379,6 +4393,36 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   // Masquer le bouton Appliquer pour les fins de boucle (géré dans renderPipelineForm)
   const pipelineSubmitBtn = pipelineForm.querySelector('button[type="submit"]');
+
+  // Parameters events
+  if (addParameterBtn) {
+    addParameterBtn.addEventListener('click', () => {
+      const param = buildDefaultParameter();
+      parameters.push(param);
+      selectedParameterId = param.id;
+      renderParameterViews();
+    });
+  }
+
+  if (removeParameterBtn) {
+    removeParameterBtn.addEventListener('click', () => {
+      if (!selectedParameterId) return;
+      parameters = parameters.filter((p) => p.id !== selectedParameterId);
+      selectedParameterId = parameters[0]?.id || null;
+      renderParameterViews();
+    });
+  }
+
+  if (parameterForm) {
+    parameterForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const param = parameters.find((p) => p.id === selectedParameterId);
+      if (!param) return;
+      const applied = applyFormToParameter(param);
+      if (!applied) return;
+      renderParameterViews();
+    });
+  }
 
   // Functions events
   addFunctionBtn.addEventListener('click', () => {
@@ -5226,6 +5270,278 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     pipeline = clone;
     selectedPipeId = pipe.id;
     renderPipelineViews();
+  }
+
+  function formatParameterValue(value) {
+    if (!Number.isFinite(value)) return '—';
+    if (Number.isInteger(value)) return String(value);
+    const rounded = Math.round(value * 1e6) / 1e6;
+    return String(rounded);
+  }
+
+  function buildDefaultParameter() {
+    const base = t('parameters.default_name', null, 'Param');
+    let idx = parameters.length + 1;
+    let name = `${base}${idx}`;
+    const exists = (candidate) => parameters.some((p) => (p.name || '').toLowerCase() === candidate.toLowerCase());
+    while (exists(name)) {
+      idx += 1;
+      name = `${base}${idx}`;
+    }
+    return {
+      id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `param-${Date.now()}`,
+      name,
+      expr: '0',
+    };
+  }
+
+  function getParameterEvaluation() {
+    const values = new Map();
+    const errors = new Map();
+    const byName = new Map();
+    const duplicates = new Set();
+    const byId = new Map(parameters.map((p) => [p.id, p]));
+    const normalizeName = (name) => (name || '').trim();
+
+    parameters.forEach((param) => {
+      const name = normalizeName(param.name);
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (byName.has(key)) {
+        duplicates.add(key);
+      } else {
+        byName.set(key, param.id);
+      }
+    });
+
+    parameters.forEach((param) => {
+      const name = normalizeName(param.name);
+      if (!name) {
+        errors.set(param.id, t('parameters.errors.empty_name', null, 'Nom requis.'));
+        return;
+      }
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        errors.set(param.id, t('parameters.errors.invalid_name', null, 'Nom invalide.'));
+        return;
+      }
+      if (duplicates.has(name.toLowerCase())) {
+        errors.set(param.id, t('parameters.errors.duplicate', null, 'Nom déjà utilisé.'));
+      }
+    });
+
+    const getParamId = (token) => byName.get(token.toLowerCase());
+
+    const evalParam = (param, stack) => {
+      if (!param || errors.has(param.id) || values.has(param.id)) return;
+      if (stack.has(param.id)) {
+        errors.set(param.id, t('parameters.errors.cycle', null, 'Dépendance circulaire détectée.'));
+        return;
+      }
+      const exprRaw = String(param.expr ?? '').trim();
+      if (!exprRaw) {
+        errors.set(param.id, t('parameters.errors.empty_expr', null, 'Expression requise.'));
+        return;
+      }
+      const tokens = exprRaw.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+      stack.add(param.id);
+      for (const token of tokens) {
+        const depId = getParamId(token);
+        if (!depId) {
+          errors.set(param.id, t('parameters.errors.unknown', { name: token }, `Paramètre inconnu : ${token}.`));
+          stack.delete(param.id);
+          return;
+        }
+        if (depId === param.id) {
+          errors.set(param.id, t('parameters.errors.cycle', null, 'Dépendance circulaire détectée.'));
+          stack.delete(param.id);
+          return;
+        }
+        const depParam = byId.get(depId);
+        evalParam(depParam, stack);
+        if (errors.has(depId)) {
+          errors.set(param.id, t('parameters.errors.dependency', null, 'Dépendance invalide.'));
+          stack.delete(param.id);
+          return;
+        }
+      }
+      stack.delete(param.id);
+      if (errors.has(param.id)) return;
+      const safeExpr = exprRaw.replace(/[A-Za-z_][A-Za-z0-9_]*/g, (token) => {
+        const depId = getParamId(token);
+        const depValue = values.get(depId);
+        return Number.isFinite(depValue) ? String(depValue) : '0';
+      });
+      if (/[^0-9+\-*/().\s]/.test(safeExpr)) {
+        errors.set(param.id, t('parameters.errors.invalid', null, 'Expression invalide.'));
+        return;
+      }
+      let result;
+      try {
+        result = Function(`"use strict"; return (${safeExpr});`)();
+      } catch (e) {
+        errors.set(param.id, t('parameters.errors.invalid', null, 'Expression invalide.'));
+        return;
+      }
+      if (!Number.isFinite(result)) {
+        errors.set(param.id, t('parameters.errors.not_finite', null, 'Résultat non fini.'));
+        return;
+      }
+      values.set(param.id, Number(result));
+    };
+
+    parameters.forEach((param) => {
+      evalParam(param, new Set());
+    });
+
+    return { values, errors };
+  }
+
+  function renderParameterList(evaluation) {
+    if (!parameterList) return;
+    const { values, errors } = evaluation;
+    parameterList.innerHTML = '';
+    if (!parameters.length) {
+      const empty = document.createElement('div');
+      empty.className = 'list-item';
+      empty.textContent = t('parameters.empty', null, 'Aucun paramètre. Ajoutez-en un.');
+      parameterList.appendChild(empty);
+      if (removeParameterBtn) removeParameterBtn.disabled = true;
+      return;
+    }
+    if (removeParameterBtn) removeParameterBtn.disabled = false;
+    parameters.forEach((param) => {
+      const item = document.createElement('div');
+      item.className = `list-item ${param.id === selectedParameterId ? 'active' : ''}`;
+      if (errors.has(param.id)) item.classList.add('has-error');
+      const info = document.createElement('div');
+      const title = document.createElement('div');
+      title.textContent = param.name || t('parameters.default_name', null, 'Param');
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = (param.expr || '').trim() || '0';
+      info.appendChild(title);
+      info.appendChild(meta);
+      const value = document.createElement('div');
+      value.className = 'param-value';
+      if (errors.has(param.id)) {
+        value.textContent = '—';
+        value.classList.add('is-error');
+      } else {
+        value.textContent = formatParameterValue(values.get(param.id));
+      }
+      item.appendChild(info);
+      item.appendChild(value);
+      item.addEventListener('click', () => {
+        selectedParameterId = param.id;
+        renderParameterViews();
+      });
+      parameterList.appendChild(item);
+    });
+  }
+
+  function renderParameterPreview(evaluation) {
+    if (!parameterPreviewGrid) return;
+    const { values, errors } = evaluation;
+    parameterPreviewGrid.innerHTML = '';
+    if (!parameters.length) {
+      if (parameterPreviewEmpty) parameterPreviewEmpty.classList.remove('hidden');
+      return;
+    }
+    if (parameterPreviewEmpty) parameterPreviewEmpty.classList.add('hidden');
+    parameters.forEach((param) => {
+      const row = document.createElement('div');
+      row.className = 'parameters-row';
+      if (errors.has(param.id)) row.classList.add('has-error');
+      const left = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'parameters-name';
+      name.textContent = param.name || t('parameters.default_name', null, 'Param');
+      const expr = document.createElement('div');
+      expr.className = 'parameters-expr';
+      expr.textContent = `= ${(param.expr || '').trim() || '0'}`;
+      left.appendChild(name);
+      left.appendChild(expr);
+      const value = document.createElement('div');
+      value.className = 'parameters-value';
+      if (errors.has(param.id)) {
+        value.textContent = '—';
+        value.title = errors.get(param.id) || '';
+      } else {
+        value.textContent = formatParameterValue(values.get(param.id));
+      }
+      row.appendChild(left);
+      row.appendChild(value);
+      row.addEventListener('click', () => {
+        selectedParameterId = param.id;
+        renderParameterViews();
+      });
+      parameterPreviewGrid.appendChild(row);
+    });
+  }
+
+  function renderParameterForm(param, evaluation) {
+    if (!parameterForm) return;
+    const inputs = parameterForm.querySelectorAll('input, button');
+    if (!param) {
+      inputs.forEach((el) => { el.disabled = true; });
+      parameterForm.parameterName.value = '';
+      parameterForm.parameterExpr.value = '';
+      if (parameterValue) {
+        parameterValue.textContent = '—';
+        parameterValue.classList.remove('is-error');
+      }
+      if (parameterNote) parameterNote.textContent = '';
+      return;
+    }
+    inputs.forEach((el) => { el.disabled = false; });
+    parameterForm.parameterName.value = param.name || '';
+    parameterForm.parameterExpr.value = String(param.expr ?? '');
+    const error = evaluation.errors.get(param.id);
+    if (parameterValue) {
+      if (error) {
+        parameterValue.textContent = '—';
+        parameterValue.classList.add('is-error');
+      } else {
+        parameterValue.textContent = formatParameterValue(evaluation.values.get(param.id));
+        parameterValue.classList.remove('is-error');
+      }
+    }
+    if (parameterNote) parameterNote.textContent = error || '';
+  }
+
+  function renderParameterViews() {
+    const evaluation = getParameterEvaluation();
+    const current = parameters.find((p) => p.id === selectedParameterId) || parameters[0] || null;
+    selectedParameterId = current ? current.id : null;
+    renderParameterList(evaluation);
+    renderParameterPreview(evaluation);
+    renderParameterForm(current, evaluation);
+  }
+
+  function applyFormToParameter(param) {
+    if (!parameterForm) return false;
+    const formData = new FormData(parameterForm);
+    const proposedName = String(formData.get('parameterName') || param.name || '').trim();
+    const proposedExprRaw = String(formData.get('parameterExpr') ?? param.expr ?? '').trim();
+    if (!proposedName) {
+      if (parameterNote) parameterNote.textContent = t('parameters.errors.empty_name', null, 'Nom requis.');
+      return false;
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(proposedName)) {
+      if (parameterNote) parameterNote.textContent = t('parameters.errors.invalid_name', null, 'Nom invalide.');
+      return false;
+    }
+    const isDuplicate = parameters.some(
+      (p) => p.id !== param.id && (p.name || '').toLowerCase() === proposedName.toLowerCase(),
+    );
+    if (isDuplicate) {
+      if (parameterNote) parameterNote.textContent = t('parameters.errors.duplicate', null, 'Nom déjà utilisé.');
+      return false;
+    }
+    param.name = proposedName;
+    param.expr = proposedExprRaw || '0';
+    if (parameterNote) parameterNote.textContent = '';
+    return true;
   }
 
   function buildDefaultLibrary() {
@@ -6223,6 +6539,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       })),
       shaders,
       functions: functionsStore,
+      parameters,
       pipeline,
       pipelineShaderChoiceId,
     };
@@ -6247,6 +6564,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     });
     shaders = Array.isArray(data.shaders) ? data.shaders : [];
     functionsStore = Array.isArray(data.functions) ? data.functions : [];
+    parameters = Array.isArray(data.parameters)
+      ? data.parameters.map((param, idx) => ({
+        id: param?.id || (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `param-${Date.now()}-${idx}`),
+        name: typeof param?.name === 'string' ? param.name : String(param?.name ?? ''),
+        expr: (typeof param?.expr === 'string' || typeof param?.expr === 'number')
+          ? String(param.expr)
+          : '',
+      }))
+      : [];
     pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
     pipeline.forEach((pipe) => {
       if ((pipe.type || 'step') === 'step' && typeof pipe.activated !== 'boolean') {
@@ -6259,6 +6585,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     selectedShaderId = shaders[0]?.id || null;
     selectedFunctionId = functionsStore[0]?.id || null;
     selectedPipeId = pipeline[0]?.id || null;
+    selectedParameterId = parameters[0]?.id || null;
     markBindingsDirty();
     renderTextureList();
     const tex = textures.find((t) => t.id === selectedTextureId);
@@ -6277,6 +6604,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderShaderEditor(currentShader || null);
     renderFunctionViews();
     renderPipelineViews();
+    renderParameterViews();
     updateTextureDeclarationsEditor();
   }
 
@@ -6976,6 +7304,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   seedInitialPipeline();
   seedInitialFunction();
   seedInitialTexture();
+  renderParameterViews();
   updateTextureDeclarationsEditor();
 });
   function syncHighlightScroll(textarea, highlightEl) {

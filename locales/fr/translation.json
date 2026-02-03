@@ -104,6 +104,7 @@
     "functions": "Fonctions",
     "shaders": "Compute Shaders",
     "pass": "Pass",
+    "parameters": "Paramètres",
     "console": "Console"
   },
   "panels": {
@@ -180,6 +181,28 @@
       "loop_start": "Boucle (début)",
       "loop_end": "Boucle (fin)",
       "no_shader": "Aucun compute shader disponible"
+    }
+  },
+  "parameters": {
+    "title": "Paramètres",
+    "preview_label": "Résultats",
+    "preview_title": "Valeurs calculées",
+    "selected": "Paramètre sélectionné",
+    "expression": "Expression",
+    "result": "Résultat",
+    "empty": "Aucun paramètre. Ajoutez-en un.",
+    "empty_preview": "Ajoutez des paramètres, par exemple SX = 128 puis DispatchMatrix = SX/8.",
+    "default_name": "Param",
+    "errors": {
+      "duplicate": "Nom déjà utilisé.",
+      "empty_name": "Nom requis.",
+      "invalid_name": "Nom invalide (A-Z, 0-9, _).",
+      "empty_expr": "Expression requise.",
+      "unknown": "Paramètre inconnu : {{name}}.",
+      "cycle": "Dépendance circulaire détectée.",
+      "dependency": "Dépendance invalide.",
+      "invalid": "Expression invalide.",
+      "not_finite": "Résultat non fini."
     }
   },
   "functions": {
