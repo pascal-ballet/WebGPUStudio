@@ -4378,11 +4378,19 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     } else if (pipe.type === 'step') {
       pipe.shaderId = formData.get('shaderRef') || pipe.shaderId;
       pipe.activated = formData.get('pipeActivated') !== null;
-      pipe.dispatch = {
-        x: clamp(parseInt(formData.get('pDispatchX'), 10) || pipe.dispatch?.x || 1, 1, 65535),
-        y: clamp(parseInt(formData.get('pDispatchY'), 10) || pipe.dispatch?.y || 1, 1, 65535),
-        z: clamp(parseInt(formData.get('pDispatchZ'), 10) || pipe.dispatch?.z || 1, 1, 65535),
+      const evaluation = getParameterEvaluation();
+      const nameMap = buildParameterNameMap(evaluation);
+      const dispatchInput = {
+        x: String(formData.get('pDispatchX') ?? '').trim(),
+        y: String(formData.get('pDispatchY') ?? '').trim(),
+        z: String(formData.get('pDispatchZ') ?? '').trim(),
       };
+      pipe.dispatch = {
+        x: clamp(resolveSizeInput(dispatchInput.x, pipe.dispatch?.x || 1, evaluation, nameMap), 1, 65535),
+        y: clamp(resolveSizeInput(dispatchInput.y, pipe.dispatch?.y || 1, evaluation, nameMap), 1, 65535),
+        z: clamp(resolveSizeInput(dispatchInput.z, pipe.dispatch?.z || 1, evaluation, nameMap), 1, 65535),
+      };
+      pipe.dispatchInput = dispatchInput;
     } else if (pipelinePanelTitle) {
       pipelinePanelTitle.textContent = pipe.type === 'loopEnd'
         ? t('pipeline.panel.loop_end_selected', null, 'Fin boucle sélectionné')
@@ -5049,6 +5057,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       shaderId,
       activated: true,
       dispatch: { x: 8, y: 4, z: 1 },
+      dispatchInput: { x: '8', y: '4', z: '1' },
     };
   }
 
@@ -5251,9 +5260,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         });
         pipelineShaderSelect.value = pipe.shaderId || shaders[0].id;
       }
-      pipelineForm.pDispatchX.value = pipe.dispatch?.x ?? 4;
-      pipelineForm.pDispatchY.value = pipe.dispatch?.y ?? 4;
-      pipelineForm.pDispatchZ.value = pipe.dispatch?.z ?? 1;
+      const dispatchInput = pipe.dispatchInput || {};
+      pipelineForm.pDispatchX.value = dispatchInput.x !== undefined && dispatchInput.x !== null && dispatchInput.x !== '' ? dispatchInput.x : (pipe.dispatch?.x ?? 4);
+      pipelineForm.pDispatchY.value = dispatchInput.y !== undefined && dispatchInput.y !== null && dispatchInput.y !== '' ? dispatchInput.y : (pipe.dispatch?.y ?? 4);
+      pipelineForm.pDispatchZ.value = dispatchInput.z !== undefined && dispatchInput.z !== null && dispatchInput.z !== '' ? dispatchInput.z : (pipe.dispatch?.z ?? 1);
     }
   }
 
@@ -5365,6 +5375,27 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const current = textures.find((t) => t.id === selectedTextureId);
     if (current) updateSliceControl(current);
     renderPreview();
+  }
+
+  function updatePipelineDispatchFromParameters(evaluation) {
+    if (!pipeline.length) return;
+    const nameMap = buildParameterNameMap(evaluation);
+    let didChange = false;
+    pipeline.forEach((pipe) => {
+      if ((pipe.type || 'step') !== 'step') return;
+      const dispatchInput = pipe.dispatchInput || {};
+      const nextDispatch = {
+        x: clamp(resolveSizeInput(dispatchInput.x, pipe.dispatch?.x ?? 1, evaluation, nameMap), 1, 65535),
+        y: clamp(resolveSizeInput(dispatchInput.y, pipe.dispatch?.y ?? 1, evaluation, nameMap), 1, 65535),
+        z: clamp(resolveSizeInput(dispatchInput.z, pipe.dispatch?.z ?? 1, evaluation, nameMap), 1, 65535),
+      };
+      const prev = pipe.dispatch || {};
+      if (nextDispatch.x !== prev.x || nextDispatch.y !== prev.y || nextDispatch.z !== prev.z) {
+        pipe.dispatch = nextDispatch;
+        didChange = true;
+      }
+    });
+    if (didChange) renderPipelineTimeline();
   }
 
   function buildDefaultParameter() {
@@ -5605,6 +5636,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderParameterPreview(evaluation);
     renderParameterForm(current, evaluation);
     updateTextureSizesFromParameters(evaluation);
+    updatePipelineDispatchFromParameters(evaluation);
   }
 
   function applyFormToParameter(param) {
@@ -6704,6 +6736,21 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     pipeline.forEach((pipe) => {
       if ((pipe.type || 'step') === 'step' && typeof pipe.activated !== 'boolean') {
         pipe.activated = true;
+      }
+      if ((pipe.type || 'step') === 'step') {
+        const dispatch = pipe.dispatch || { x: 1, y: 1, z: 1 };
+        pipe.dispatch = {
+          x: clamp(parseInt(dispatch.x, 10) || 1, 1, 65535),
+          y: clamp(parseInt(dispatch.y, 10) || 1, 1, 65535),
+          z: clamp(parseInt(dispatch.z, 10) || 1, 1, 65535),
+        };
+        if (!pipe.dispatchInput || typeof pipe.dispatchInput !== 'object') {
+          pipe.dispatchInput = {
+            x: String(pipe.dispatch.x),
+            y: String(pipe.dispatch.y),
+            z: String(pipe.dispatch.z),
+          };
+        }
       }
     });
     pipelineShaderChoiceId = data.pipelineShaderChoiceId || shaders[0]?.id || null;
