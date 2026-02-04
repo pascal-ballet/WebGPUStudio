@@ -7143,7 +7143,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.program = null;
       this.tex = null;
       this.size = [1, 1, 1];
-    this.scale = [1,1,1];
+      this.scale = [1, 1, 1];
+      this.camDist = 1.2;
       this.rotX = -0.75;
       this.rotY = 0.9;
       this.isDragging = false;
@@ -7172,6 +7173,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       out vec4 outColor;
       uniform sampler3D uTex;
       uniform mat3 uRot;
+      uniform float uCamDist;
       uniform float uAlphaScale;
       uniform vec3 uScale;
       const vec3 center = vec3(0.5);
@@ -7191,7 +7193,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       void main() {
         vec2 uv = vUV * 2.0 - 1.0;
         vec3 dir = normalize(uRot * vec3(uv, 1.3));
-        vec3 camOffset = uRot * vec3(0.0, 0.0, -1.2);
+        vec3 camOffset = uRot * vec3(0.0, 0.0, -uCamDist);
         vec3 camera = center + camOffset;
         vec3 halfS = 0.5 * uScale;
         vec3 bmin = center - halfS;
@@ -7221,6 +7223,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.program = this.link(vsObj, fsObj);
       this.posLoc = 0;
       this.rotLoc = gl.getUniformLocation(this.program, 'uRot');
+      this.camDistLoc = gl.getUniformLocation(this.program, 'uCamDist');
       this.alphaLoc = gl.getUniformLocation(this.program, 'uAlphaScale');
       this.scaleLoc = gl.getUniformLocation(this.program, 'uScale');
       this.quadVbo = gl.createBuffer();
@@ -7236,6 +7239,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 
     attachInteractions() {
+      const minCamDist = 0.2;
+      const maxCamDist = 10.0;
       const onDown = (e) => {
         this.isDragging = true;
         this.lastPos = { x: e.clientX, y: e.clientY };
@@ -7255,6 +7260,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         this.rotX = Math.max(-maxPitch, Math.min(maxPitch, this.rotX));
         this.render();
       };
+      const onWheel = (e) => {
+        e.preventDefault();
+        const zoom = Math.exp(e.deltaY * 0.0015);
+        const next = this.camDist * zoom;
+        this.camDist = Math.max(minCamDist, Math.min(maxCamDist, next));
+        this.render();
+      };
       const onHover = (e) => {
         if (!this.currentTex || !this.onHover) return;
         const val = this.pickValue(e.clientX, e.clientY);
@@ -7266,6 +7278,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.canvas.addEventListener('pointerdown', onDown);
       this.canvas.addEventListener('pointermove', onHover);
       this.canvas.addEventListener('pointerleave', onLeave);
+      this.canvas.addEventListener('wheel', onWheel, { passive: false });
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointermove', onMove);
     }
@@ -7285,7 +7298,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         cx * sy, -sx, cx * cy,
       ];
       const dir = normalize3(mulMat3Vec3(rot, [nx, ny, 1.3]));
-      const camOffset = mulMat3Vec3(rot, [0, 0, -1.2]);
+      const camOffset = mulMat3Vec3(rot, [0, 0, -this.camDist]);
       const center = [0.5, 0.5, 0.5];
       const camera = add3(center, camOffset);
       const halfS = [this.scale[0] * 0.5, this.scale[1] * 0.5, this.scale[2] * 0.5];
@@ -7430,6 +7443,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         cx * sy, -sx, cx * cy,
       ];
       gl.uniformMatrix3fv(this.rotLoc, false, rot);
+      if (this.camDistLoc) gl.uniform1f(this.camDistLoc, this.camDist);
       gl.uniform1f(this.alphaLoc, 0.35);
       if (this.scaleLoc && this.scale) {
         gl.uniform3fv(this.scaleLoc, this.scale);
