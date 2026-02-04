@@ -201,6 +201,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const parameterList = document.getElementById('parameterList');
   const addParameterBtn = document.getElementById('addParameterBtn');
   const removeParameterBtn = document.getElementById('removeParameterBtn');
+  const moveParameterUpBtn = document.getElementById('moveParameterUpBtn');
+  const moveParameterDownBtn = document.getElementById('moveParameterDownBtn');
   const parameterForm = document.getElementById('parameterForm');
   const parameterPreviewGrid = document.getElementById('parameterPreviewGrid');
   const parameterPreviewEmpty = document.getElementById('parameterPreviewEmpty');
@@ -4430,6 +4432,24 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       if (!applied) return;
       renderParameterViews();
     });
+  }
+
+  function moveParameter(delta) {
+    const idx = parameters.findIndex((p) => p.id === selectedParameterId);
+    if (idx === -1) return;
+    const newIndex = idx + delta;
+    if (newIndex < 0 || newIndex >= parameters.length) return;
+    const [param] = parameters.splice(idx, 1);
+    parameters.splice(newIndex, 0, param);
+    selectedParameterId = param.id;
+    renderParameterViews();
+  }
+
+  if (moveParameterUpBtn) {
+    moveParameterUpBtn.addEventListener('click', () => moveParameter(-1));
+  }
+  if (moveParameterDownBtn) {
+    moveParameterDownBtn.addEventListener('click', () => moveParameter(1));
   }
 
   // Functions events
