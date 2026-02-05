@@ -3008,9 +3008,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function setMouseUniformPosition(x, y, z, isInside) {
-    const nextX = isInside ? x : 0;
-    const nextY = isInside ? y : 0;
-    const nextZ = z ?? 0;
+    const nextX = isInside ? x : mouseXValue;
+    const nextY = isInside ? y : mouseYValue;
+    const nextZ = z ?? mouseZValue;
     mouseXValue = nextX;
     mouseYValue = nextY;
     mouseZValue = nextZ;
