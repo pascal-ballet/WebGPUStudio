@@ -695,15 +695,6 @@ select option, select optgroup {
   box-shadow: 0 0 0 2px rgba(13, 17, 26, 0.9);
 }
 
-.tab.has-error:not(.active)::after {
-  animation: console-tab-blink 0.85s infinite;
-}
-
-@keyframes console-tab-blink {
-  0% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.25; transform: scale(0.85); }
-  100% { opacity: 1; transform: scale(1); }
-}
 
 .tab.active {
   color: #0d111a;
