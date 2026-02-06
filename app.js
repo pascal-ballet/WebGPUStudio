@@ -279,6 +279,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const accountToggleBtn = document.getElementById('accountToggleBtn');
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   const languageSelect = document.getElementById('languageSelect');
+  const projectNameInput = document.getElementById('projectNameInput');
   const systemInfoBtn = document.getElementById('systemInfoBtn');
   const systemInfoModal = document.getElementById('systemInfoModal');
   const systemInfoCopyBtn = document.getElementById('systemInfoCopyBtn');
@@ -348,6 +349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
   const USER_BINDING_OFFSET = UNIFORM_BINDINGS.key + 1;
   const BUFFER_BINDING_OFFSET = USER_BINDING_OFFSET;
+  const DEFAULT_PROJECT_NAME = 'Projet';
 
   const getMaxStorageBindings = (device) => {
     const maxPerBindGroup = device?.limits?.maxBindingsPerBindGroup;
@@ -361,6 +363,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     return limit;
   };
+
+  const normalizeProjectName = (value) => {
+    const name = typeof value === 'string' ? value.trim() : '';
+    return name || DEFAULT_PROJECT_NAME;
+  };
+
+  const sanitizeProjectFileName = (value) => {
+    const base = normalizeProjectName(value).replace(/\.wgstudio$/i, '');
+    const cleaned = base.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+    return cleaned || DEFAULT_PROJECT_NAME;
+  };
+
+  let projectName = DEFAULT_PROJECT_NAME;
+
+  const setProjectName = (value) => {
+    projectName = normalizeProjectName(value);
+    if (projectNameInput) projectNameInput.value = projectName;
+  };
+
+  const getProjectName = () => normalizeProjectName(projectNameInput?.value ?? projectName);
+
+  if (projectNameInput) {
+    projectNameInput.addEventListener('input', () => {
+      projectName = projectNameInput.value;
+    });
+    projectNameInput.addEventListener('blur', () => {
+      setProjectName(projectNameInput.value);
+    });
+    projectNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') projectNameInput.blur();
+    });
+  }
+
+  setProjectName(projectNameInput?.value ?? DEFAULT_PROJECT_NAME);
 
   let textures = [];
   let selectedTextureId = null;
@@ -3709,13 +3745,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
+      setProjectName(projectNameInput?.value ?? projectName);
       const data = serializeProject();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      a.download = `project-${stamp}.wgstudio`;
+      const safeName = sanitizeProjectFileName(projectNameInput?.value ?? projectName);
+      a.download = `${safeName}.wgstudio`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -3755,6 +3792,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     newProjectBtn.addEventListener('click', () => {
       const ok = window.confirm('Creer un nouveau projet ? Les donnees non sauvegardees seront perdues.');
       if (!ok) return;
+      setProjectName(DEFAULT_PROJECT_NAME);
       textures = [];
       shaders = [];
       functionsStore = [];
@@ -6701,6 +6739,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function serializeProject() {
     return {
       version: 1,
+      projectName: getProjectName(),
       textures: textures.map((tex) => ({
         ...tex,
         values: [],
@@ -6718,6 +6757,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       throw new Error('Fichier invalide');
     }
     stopCurrentExecution(false);
+    if (Object.prototype.hasOwnProperty.call(data, 'projectName')) {
+      setProjectName(data.projectName);
+    }
     textures = Array.isArray(data.textures)
       ? data.textures.map((tex) => {
         const size = tex?.size || { x: 1, y: 1, z: 1 };

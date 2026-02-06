@@ -63,6 +63,37 @@ body {
   position: relative;
 }
 
+.project-name-field {
+  display: flex;
+  align-items: center;
+  margin: 0 12px;
+}
+
+.project-name-field input {
+  width: clamp(140px, 18vw, 240px);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 4px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.project-name-field input::placeholder {
+  color: var(--muted);
+}
+
+.project-name-field input:focus {
+  outline: none;
+  border-color: rgba(108, 168, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(108, 168, 255, 0.18);
+}
+
+:root[data-theme="light"] .project-name-field input {
+  background: rgba(255, 255, 255, 0.80);
+  color: #111827;
+}
+
 .lang-select {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
