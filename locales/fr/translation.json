@@ -4,6 +4,7 @@
     "tagline": "Apprendre et enseigner WebGPU facilement",
     "version": "Version {{version}}",
     "account": "Mon compte",
+    "project_name": "Nom du Projet",
     "system_info": "System"
   },
   "system": {
