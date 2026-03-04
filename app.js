@@ -7217,7 +7217,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       uniform mat3 uRot;
       uniform float uCamDist;
       uniform float uAlphaScale;
+      uniform float uAmbient;
       uniform vec3 uScale;
+      uniform vec3 uTexSize;
       const vec3 center = vec3(0.5);
 
       // Simple ray-box intersection against [0,1]^3
@@ -7247,16 +7249,21 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         }
         float t = max(tmin, 0.0);
         vec4 acc = vec4(0.0);
+        // Adaptive step to avoid skipping voxels when the view is near-perpendicular.
+        float voxelStep = min(min(uScale.x / max(uTexSize.x, 1.0), uScale.y / max(uTexSize.y, 1.0)), uScale.z / max(uTexSize.z, 1.0));
+        float stepSize = max(0.0015, voxelStep * 0.6);
         // fixed step raymarch
-        for (int i = 0; i < 192; i++) {
+        for (int i = 0; i < 768; i++) {
           if (t > tmax || acc.a > 0.98) break;
           vec3 p = camera + dir * t;
           vec3 uvw = (p - bmin) / uScale;
           vec4 c = texture(uTex, uvw);
           float a = c.a * uAlphaScale;
-          acc.rgb += (1.0 - acc.a) * c.rgb * a;
+          // Ambient boost to keep low-intensity voxels readable.
+          vec3 lit = c.rgb * (1.0 + uAmbient);
+          acc.rgb += (1.0 - acc.a) * lit * a;
           acc.a += (1.0 - acc.a) * a;
-          t += 0.01;
+          t += stepSize;
         }
         outColor = acc;
       }`;
@@ -7267,7 +7274,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       this.rotLoc = gl.getUniformLocation(this.program, 'uRot');
       this.camDistLoc = gl.getUniformLocation(this.program, 'uCamDist');
       this.alphaLoc = gl.getUniformLocation(this.program, 'uAlphaScale');
+      this.ambientLoc = gl.getUniformLocation(this.program, 'uAmbient');
       this.scaleLoc = gl.getUniformLocation(this.program, 'uScale');
+      this.texSizeLoc = gl.getUniformLocation(this.program, 'uTexSize');
       this.quadVbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -7487,8 +7496,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       gl.uniformMatrix3fv(this.rotLoc, false, rot);
       if (this.camDistLoc) gl.uniform1f(this.camDistLoc, this.camDist);
       gl.uniform1f(this.alphaLoc, 0.35);
+      if (this.ambientLoc) gl.uniform1f(this.ambientLoc, 0.65);
       if (this.scaleLoc && this.scale) {
         gl.uniform3fv(this.scaleLoc, this.scale);
+      }
+      if (this.texSizeLoc && this.size) {
+        gl.uniform3f(this.texSizeLoc, this.size[0], this.size[1], this.size[2]);
       }
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
