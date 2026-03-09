@@ -455,6 +455,52 @@ document.addEventListener('DOMContentLoaded', async () => {
   let keyValue = 0;
   let mouseBtnValue = 0;
 
+  function normalizeTextureType(type) {
+    return type === 'uint' || type === 'float' || type === 'vec4f' ? type : 'int';
+  }
+
+  function isVec4Type(type) {
+    return normalizeTextureType(type) === 'vec4f';
+  }
+
+  function isFloatTextureType(type) {
+    const normalized = normalizeTextureType(type);
+    return normalized === 'float' || normalized === 'vec4f';
+  }
+
+  function getTextureComponentCount(type) {
+    return isVec4Type(type) ? 4 : 1;
+  }
+
+  function getTextureScalarWGSL(type) {
+    const normalized = normalizeTextureType(type);
+    if (normalized === 'float') return 'f32';
+    if (normalized === 'uint') return 'u32';
+    if (normalized === 'vec4f') return 'vec4<f32>';
+    return 'i32';
+  }
+
+  function normalizeVec4Value(value) {
+    if (Array.isArray(value)) {
+      const out = [0, 0, 0, 0];
+      for (let i = 0; i < 4; i += 1) out[i] = Number(value[i]) || 0;
+      return out;
+    }
+    if (value && typeof value === 'object') {
+      const out = [0, 0, 0, 0];
+      const keys = ['x', 'y', 'z', 'w'];
+      for (let i = 0; i < 4; i += 1) out[i] = Number(value[keys[i]]) || 0;
+      return out;
+    }
+    const n = Number(value) || 0;
+    return [n, n, n, n];
+  }
+
+  function getFraction01(value) {
+    const n = Number(value) || 0;
+    return Math.abs(n - Math.floor(n));
+  }
+
   function setPreviewValue(x,y,val,valType = null) {
     previewValueCurrent = val;
     if (!previewValueLabel) return;
@@ -462,8 +508,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       previewValueLabel.textContent = t('toolbar.values_empty', null, 'Valeurs : —');
       return;
     }
-    const displayVal = (valType === 'uint' && typeof val === 'number') ? (val >>> 0) : val;
-    const text = displayVal;
+    const text = formatBufferValue(val, valType || 'int');
     previewValueLabel.textContent = t('toolbar.value_at', { x, y, value: text }, `Val (${x},${y}) : ${text}`);
   }
 
@@ -473,11 +518,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function formatBufferValue(val, type) {
     if (val === null || val === undefined) return '';
-    if (type === 'uint') return String((Number(val) || 0) >>> 0);
-    if (type === 'int') return String(Number(val) || 0);
-    if (type === 'float') {
+    const normalized = normalizeTextureType(type);
+    if (normalized === 'uint') return String((Number(val) || 0) >>> 0);
+    if (normalized === 'int') return String(Number(val) || 0);
+    if (normalized === 'float') {
       const n = Number(val);
       return Number.isFinite(n) ? String(n) : '0';
+    }
+    if (normalized === 'vec4f') {
+      const v = normalizeVec4Value(val);
+      return `(${v[0]}, ${v[1]}, ${v[2]}, ${v[3]})`;
     }
     return String(val);
   }
@@ -2021,7 +2071,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const x = tex?.size?.x || 0;
       const y = tex?.size?.y || 0;
       const z = tex?.size?.z || 0;
-      total += x * y * z * 4;
+      total += x * y * z * getTextureComponentCount(tex?.type) * 4;
     });
     return total;
   };
@@ -4117,7 +4167,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function ensureTextureBuffer(device, tex) {
     if (!device || !tex) return null;
-    const size = Math.max(4, (tex.size.x * tex.size.y * tex.size.z) * 4);
+    const lanes = getTextureComponentCount(tex.type);
+    const size = Math.max(4, (tex.size.x * tex.size.y * tex.size.z) * lanes * 4);
     let entry = textureBuffers.get(tex.id);
     if (!entry || entry.size !== size) {
       if (entry?.buffer) {
@@ -4270,9 +4321,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       task.dst.mapAsync(GPUMapMode.READ)
         .then(() => {
           const range = task.dst.getMappedRange();
-          const copy = task.tex.type === 'float'
+          const copy = isFloatTextureType(task.tex.type)
             ? new Float32Array(range.slice(0))
-            : new Int32Array(range.slice(0));
+            : (normalizeTextureType(task.tex.type) === 'uint'
+              ? new Uint32Array(range.slice(0))
+              : new Int32Array(range.slice(0)));
           task.dst.unmap();
           updateTextureValuesFromFlat(task.tex, copy);
         })
@@ -4873,7 +4926,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return (list || [])
       .map((tex, idx) => {
         const name = sanitizedIdentifier(tex.name || `Buffer${idx + 1}`, `Buffer${idx + 1}`);
-        const scalar = tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32');
+        const scalar = getTextureScalarWGSL(tex.type);
         const binding = bindingOffset + idx;
         return `@group(0) @binding(${binding}) var<storage, read_write> ${name} : array<${scalar}>;`;
       })
@@ -4980,7 +5033,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const tex = {
       id: window.crypto && crypto.randomUUID ? crypto.randomUUID() : `tex-${Date.now()}`,
       name: uniqueTextureName(baseName),
-      type: formData.get('type') || 'int',
+      type: normalizeTextureType(formData.get('type') || 'int'),
       fill: formData.get('fill') || 'empty',
       size,
       sizeInput,
@@ -5013,17 +5066,30 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       z: clamp(resolveSizeInput(sizeInput.z, tex.size.z, evaluation, nameMap), 1, Number.MAX_SAFE_INTEGER),
     };
     const sizeChanged = newSize.x !== tex.size.x || newSize.y !== tex.size.y || newSize.z !== tex.size.z;
+    const oldType = normalizeTextureType(tex.type);
     tex.size = newSize;
     tex.sizeInput = sizeInput;
-    tex.type = formData.get('type') || tex.type;
+    tex.type = normalizeTextureType(formData.get('type') || tex.type);
+    const typeChanged = oldType !== tex.type;
     tex.fill = formData.get('fill') || tex.fill;
-    if (sizeChanged || tex.fill === 'random') {
+    if (sizeChanged || typeChanged || tex.fill === 'random') {
       regenerateValues(tex);
     } else if (tex.fill === 'empty') {
       ensureValueShape(tex);
     }
     updateSliceControl(tex);
     renderForm(tex);
+  }
+
+  function coerceTextureValue(value, type) {
+    const normalized = normalizeTextureType(type);
+    if (normalized === 'vec4f') return normalizeVec4Value(value);
+    if (normalized === 'float') {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    }
+    if (normalized === 'uint') return (Number(value) || 0) >>> 0;
+    return (Number(value) || 0) | 0;
   }
 
   function regenerateValues(tex) {
@@ -5054,7 +5120,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         tex.values[k][j].length = x;
         for (let i = 0; i < x; i += 1) {
           if (tex.values[k][j][i] === undefined) {
-            tex.values[k][j][i] = tex.fill === 'empty' ? 0 : generateValue(tex);
+            tex.values[k][j][i] = generateValue(tex);
+          } else {
+            tex.values[k][j][i] = coerceTextureValue(tex.values[k][j][i], tex.type);
           }
         }
       }
@@ -5062,14 +5130,24 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function generateValue(tex) {
+    const type = normalizeTextureType(tex.type);
+    if (type === 'vec4f') {
+      if (tex.fill === 'empty') return [0, 0, 0, 0];
+      return [
+        Number(Math.random().toFixed(3)),
+        Number(Math.random().toFixed(3)),
+        Number(Math.random().toFixed(3)),
+        Number(Math.random().toFixed(3)),
+      ];
+    }
     if (tex.fill === 'empty') return 0;
-    if (tex.type === 'float') {
+    if (type === 'float') {
       const val = Math.random();
       return Number(val.toFixed(3));
     }
     // Génère un entier 32 bits (signé ou non signé selon type)
     const r = (Math.random() * 0x100000000) >>> 0; // 0 .. 2^32-1
-    return tex.type === 'uint' ? r >>> 0 : (r | 0);
+    return type === 'uint' ? r >>> 0 : (r | 0);
   }
 
   function clamp(value, min, max) {
@@ -6432,7 +6510,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     textures.forEach((tex, idx) => {
       bindings.set(idx, {
         binding: idx,
-        scalar: tex.type === 'float' ? 'f32' : (tex.type === 'uint' ? 'u32' : 'i32'),
+        scalar: getTextureScalarWGSL(tex.type),
+        components: getTextureComponentCount(tex.type),
         length: tex.size.x * tex.size.y * tex.size.z,
         tex,
         usage: 'storage',
@@ -6440,17 +6519,20 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     });
 
     // Other storage buffers from WGSL
-    const storageRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<storage,[^>]*>\s*[A-Za-z_][\w]*\s*:\s*array<([A-Za-z0-9_]+)>/g;
+    const storageRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<storage,[^>]*>\s*[A-Za-z_][\w]*\s*:\s*array<\s*([^>]+(?:<[^>]+>)?)\s*>/g;
     let match;
     while ((match = storageRegex.exec(wgsl)) !== null) {
       const binding = parseInt(match[1], 10);
-      const scalar = match[2].toLowerCase().startsWith('f')
-        ? 'f32'
-        : (match[2].toLowerCase().startsWith('u') ? 'u32' : 'i32');
+      const scalarToken = (match[2] || '').replace(/\s+/g, '').toLowerCase();
+      const scalar = scalarToken === 'vec4<f32>'
+        ? 'vec4<f32>'
+        : (scalarToken.startsWith('f') ? 'f32' : (scalarToken.startsWith('u') ? 'u32' : 'i32'));
+      const components = scalar === 'vec4<f32>' ? 4 : 1;
       if (!bindings.has(binding)) {
         bindings.set(binding, {
           binding,
           scalar,
+          components,
           length: 256,
           tex: null,
           usage: 'storage',
@@ -6465,6 +6547,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       bindings.set(binding, {
         binding,
         scalar: 'u32',
+        components: 1,
         length: 1,
         tex: null,
         usage: 'uniform',
@@ -6477,6 +6560,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       bindings.set(binding, {
         binding,
         scalar: 'u32',
+        components: 1,
         length: 1,
         tex: null,
         usage: 'uniform',
@@ -6489,6 +6573,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       bindings.set(binding, {
         binding,
         scalar: 'u32',
+        components: 1,
         length: 1,
         tex: null,
         usage: 'uniform',
@@ -6501,6 +6586,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       bindings.set(binding, {
         binding,
         scalar: 'u32',
+        components: 1,
         length: 1,
         tex: null,
         usage: 'uniform',
@@ -6513,6 +6599,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       bindings.set(binding, {
         binding,
         scalar: 'u32',
+        components: 1,
         length: 1,
         tex: null,
         usage: 'uniform',
@@ -6525,6 +6612,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       bindings.set(binding, {
         binding,
         scalar: 'u32',
+        components: 1,
         length: 1,
         tex: null,
         usage: 'uniform',
@@ -6533,7 +6621,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 
     bindings.forEach((info, binding) => {
-      const byteLength = Math.max(4, info.length * 4);
+      const byteLength = Math.max(4, info.length * (info.components || 1) * 4);
       let bufEntry = bindingBuffers.get(binding);
       if (!bufEntry || bufEntry.size !== byteLength) {
         const buffer = device.createBuffer({
@@ -6676,6 +6764,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function updateTextureValuesFromFlat(tex, flatArray) {
     const { x, y, z } = tex.size;
+    const lanes = getTextureComponentCount(tex.type);
     tex.values = [];
     let ptr = 0;
     for (let k = 0; k < z; k += 1) {
@@ -6683,8 +6772,18 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       for (let j = 0; j < y; j += 1) {
         const row = [];
         for (let i = 0; i < x; i += 1) {
-          row.push(flatArray[ptr] ?? 0);
-          ptr += 1;
+          if (lanes === 4) {
+            row.push([
+              Number(flatArray[ptr] ?? 0),
+              Number(flatArray[ptr + 1] ?? 0),
+              Number(flatArray[ptr + 2] ?? 0),
+              Number(flatArray[ptr + 3] ?? 0),
+            ]);
+            ptr += 4;
+          } else {
+            row.push(flatArray[ptr] ?? 0);
+            ptr += 1;
+          }
         }
         layer.push(row);
       }
@@ -6695,16 +6794,29 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function flattenTextureToTypedArray(tex) {
     const { x, y, z } = tex.size;
     const total = x * y * z;
-    const isFloat = tex.type === 'float';
-    const isUint = tex.type === 'uint';
-    const flat = isFloat ? new Float32Array(total) : (isUint ? new Uint32Array(total) : new Int32Array(total));
+    const lanes = getTextureComponentCount(tex.type);
+    const normalized = normalizeTextureType(tex.type);
+    const isFloat = isFloatTextureType(normalized);
+    const isUint = normalized === 'uint';
+    const flat = isFloat
+      ? new Float32Array(total * lanes)
+      : (isUint ? new Uint32Array(total * lanes) : new Int32Array(total * lanes));
     let ptr = 0;
     for (let k = 0; k < z; k += 1) {
       for (let j = 0; j < y; j += 1) {
         for (let i = 0; i < x; i += 1) {
           const val = tex.values?.[k]?.[j]?.[i];
-          flat[ptr] = typeof val === 'number' ? val : 0;
-          ptr += 1;
+          if (lanes === 4) {
+            const vec = normalizeVec4Value(val);
+            flat[ptr] = vec[0];
+            flat[ptr + 1] = vec[1];
+            flat[ptr + 2] = vec[2];
+            flat[ptr + 3] = vec[3];
+            ptr += 4;
+          } else {
+            flat[ptr] = coerceTextureValue(val, normalized);
+            ptr += 1;
+          }
         }
       }
     }
@@ -6771,7 +6883,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
             z: typeof existing.z === 'string' || typeof existing.z === 'number' ? String(existing.z) : String(size?.z ?? 1),
           }
           : { x: String(size?.x ?? 1), y: String(size?.y ?? 1), z: String(size?.z ?? 1) };
-        return { ...tex, size, sizeInput, values: Array.isArray(tex?.values) ? tex.values : [] };
+        return {
+          ...tex,
+          type: normalizeTextureType(tex?.type),
+          fill: tex?.fill === 'random' ? 'random' : 'empty',
+          size,
+          sizeInput,
+          values: Array.isArray(tex?.values) ? tex.values : [],
+        };
       })
       : [];
     textures.forEach((tex) => {
@@ -6779,9 +6898,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         regenerateValues(tex);
         return;
       }
-      if (!Array.isArray(tex.values) || tex.values.length === 0) {
-        ensureValueShape(tex);
-      }
+      ensureValueShape(tex);
     });
     shaders = Array.isArray(data.shaders) ? data.shaders : [];
     functionsStore = Array.isArray(data.functions) ? data.functions : [];
@@ -7025,7 +7142,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     bufferForm.sizeX.value = sizeInput.x !== undefined && sizeInput.x !== null && sizeInput.x !== '' ? sizeInput.x : tex.size.x;
     bufferForm.sizeY.value = sizeInput.y !== undefined && sizeInput.y !== null && sizeInput.y !== '' ? sizeInput.y : tex.size.y;
     bufferForm.sizeZ.value = sizeInput.z !== undefined && sizeInput.z !== null && sizeInput.z !== '' ? sizeInput.z : tex.size.z;
-    bufferForm.type.value = tex.type;
+    bufferForm.type.value = normalizeTextureType(tex.type);
     bufferForm.fill.value = tex.fill;
     updateSliceControl(tex);
   }
@@ -7059,8 +7176,20 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     scheduleValuesRender(true);
   }
 
-  function valueToRGBA(val, isFloat) {
-    if (isFloat) {
+  function valueToRGBA(val, typeOrFloat) {
+    const normalized = typeof typeOrFloat === 'string'
+      ? normalizeTextureType(typeOrFloat)
+      : (typeOrFloat ? 'float' : 'int');
+    if (normalized === 'vec4f') {
+      const v = normalizeVec4Value(val);
+      return [
+        Math.round(getFraction01(v[0]) * 255),
+        Math.round(getFraction01(v[1]) * 255),
+        Math.round(getFraction01(v[2]) * 255),
+        Math.round(getFraction01(v[3]) * 255),
+      ];
+    }
+    if (normalized === 'float') {
       // Utilise uniquement la partie décimale pour une palette arc-en-ciel
       const frac = (() => {
         const n = Number(val) || 0;
@@ -7111,11 +7240,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     for (let j = tex.size.y-1; j >= 0 ; j -= 1) {
       for (let i = 0; i < tex.size.x; i += 1) {
         const v = layer[j]?.[i];
-        const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
+        const [r, g, b, a] = valueToRGBA(v, tex.type);
         imageData.data[ptr] = r;
         imageData.data[ptr + 1] = g;
         imageData.data[ptr + 2] = b;
-        imageData.data[ptr + 3] = a || 255;
+        imageData.data[ptr + 3] = a ?? 255;
         ptr += 4;
       }
     }
@@ -7377,8 +7506,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           const iy = Math.floor(uvw[1] * tex.size.y);
           const iz = Math.floor(uvw[2] * tex.size.z);
           const val = tex.values[iz]?.[iy]?.[ix];
-          const [r, g, b, a] = valueToRGBA(val, tex.type === 'float');
-          const alpha = (r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255);
+          const [r, g, b, a] = valueToRGBA(val, tex.type);
+          const alpha = isVec4Type(tex.type)
+            ? (a ?? 255)
+            : ((r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255));
           if ((alpha / 255) * alphaScale > 0.02) {
             return val;
           }
@@ -7429,8 +7560,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         for (let y = 0; y < tex.size.y; y += 1) {
           for (let x = 0; x < tex.size.x; x += 1) {
             const v = tex.values[z]?.[y]?.[x];
-            const [r, g, b, a] = valueToRGBA(v, tex.type === 'float');
-            const alpha = (r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255);
+            const [r, g, b, a] = valueToRGBA(v, tex.type);
+            const alpha = isVec4Type(tex.type)
+              ? (a ?? 255)
+              : ((r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255));
             data[ptr] = r;
             data[ptr + 1] = g;
             data[ptr + 2] = b;
