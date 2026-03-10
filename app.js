@@ -456,28 +456,56 @@ document.addEventListener('DOMContentLoaded', async () => {
   let mouseBtnValue = 0;
 
   function normalizeTextureType(type) {
-    return type === 'uint' || type === 'float' || type === 'vec4f' ? type : 'int';
+    return type === 'uint' || type === 'float' || type === 'vec3f' || type === 'vec4f' ? type : 'int';
+  }
+
+  function isVec3Type(type) {
+    return normalizeTextureType(type) === 'vec3f';
   }
 
   function isVec4Type(type) {
     return normalizeTextureType(type) === 'vec4f';
   }
 
+  function isVectorFloatType(type) {
+    const normalized = normalizeTextureType(type);
+    return normalized === 'vec3f' || normalized === 'vec4f';
+  }
+
   function isFloatTextureType(type) {
     const normalized = normalizeTextureType(type);
-    return normalized === 'float' || normalized === 'vec4f';
+    return normalized === 'float' || normalized === 'vec3f' || normalized === 'vec4f';
   }
 
   function getTextureComponentCount(type) {
-    return isVec4Type(type) ? 4 : 1;
+    if (isVec4Type(type)) return 4;
+    if (isVec3Type(type)) return 3;
+    return 1;
   }
 
   function getTextureScalarWGSL(type) {
     const normalized = normalizeTextureType(type);
     if (normalized === 'float') return 'f32';
     if (normalized === 'uint') return 'u32';
+    if (normalized === 'vec3f') return 'vec3<f32>';
     if (normalized === 'vec4f') return 'vec4<f32>';
     return 'i32';
+  }
+
+  function normalizeVec3Value(value) {
+    if (Array.isArray(value)) {
+      const out = [0, 0, 0];
+      for (let i = 0; i < 3; i += 1) out[i] = Number(value[i]) || 0;
+      return out;
+    }
+    if (value && typeof value === 'object') {
+      const out = [0, 0, 0];
+      const keys = ['x', 'y', 'z'];
+      for (let i = 0; i < 3; i += 1) out[i] = Number(value[keys[i]]) || 0;
+      return out;
+    }
+    const n = Number(value) || 0;
+    return [n, n, n];
   }
 
   function normalizeVec4Value(value) {
@@ -524,6 +552,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (normalized === 'float') {
       const n = Number(val);
       return Number.isFinite(n) ? String(n) : '0';
+    }
+    if (normalized === 'vec3f') {
+      const v = normalizeVec3Value(val);
+      return `(${v[0]}, ${v[1]}, ${v[2]})`;
     }
     if (normalized === 'vec4f') {
       const v = normalizeVec4Value(val);
@@ -5083,6 +5115,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function coerceTextureValue(value, type) {
     const normalized = normalizeTextureType(type);
+    if (normalized === 'vec3f') return normalizeVec3Value(value);
     if (normalized === 'vec4f') return normalizeVec4Value(value);
     if (normalized === 'float') {
       const n = Number(value);
@@ -5131,6 +5164,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function generateValue(tex) {
     const type = normalizeTextureType(tex.type);
+    if (type === 'vec3f') {
+      if (tex.fill === 'empty') return [0, 0, 0];
+      return [
+        Number(Math.random().toFixed(3)),
+        Number(Math.random().toFixed(3)),
+        Number(Math.random().toFixed(3)),
+      ];
+    }
     if (type === 'vec4f') {
       if (tex.fill === 'empty') return [0, 0, 0, 0];
       return [
@@ -6526,8 +6567,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       const scalarToken = (match[2] || '').replace(/\s+/g, '').toLowerCase();
       const scalar = scalarToken === 'vec4<f32>'
         ? 'vec4<f32>'
-        : (scalarToken.startsWith('f') ? 'f32' : (scalarToken.startsWith('u') ? 'u32' : 'i32'));
-      const components = scalar === 'vec4<f32>' ? 4 : 1;
+        : (scalarToken === 'vec3<f32>'
+          ? 'vec3<f32>'
+          : (scalarToken.startsWith('f') ? 'f32' : (scalarToken.startsWith('u') ? 'u32' : 'i32')));
+      const components = scalar === 'vec4<f32>' ? 4 : (scalar === 'vec3<f32>' ? 3 : 1);
       if (!bindings.has(binding)) {
         bindings.set(binding, {
           binding,
@@ -6772,14 +6815,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       for (let j = 0; j < y; j += 1) {
         const row = [];
         for (let i = 0; i < x; i += 1) {
-          if (lanes === 4) {
-            row.push([
-              Number(flatArray[ptr] ?? 0),
-              Number(flatArray[ptr + 1] ?? 0),
-              Number(flatArray[ptr + 2] ?? 0),
-              Number(flatArray[ptr + 3] ?? 0),
-            ]);
-            ptr += 4;
+          if (lanes > 1) {
+            const vec = [];
+            for (let lane = 0; lane < lanes; lane += 1) {
+              vec.push(Number(flatArray[ptr + lane] ?? 0));
+            }
+            row.push(vec);
+            ptr += lanes;
           } else {
             row.push(flatArray[ptr] ?? 0);
             ptr += 1;
@@ -6806,13 +6848,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       for (let j = 0; j < y; j += 1) {
         for (let i = 0; i < x; i += 1) {
           const val = tex.values?.[k]?.[j]?.[i];
-          if (lanes === 4) {
-            const vec = normalizeVec4Value(val);
-            flat[ptr] = vec[0];
-            flat[ptr + 1] = vec[1];
-            flat[ptr + 2] = vec[2];
-            flat[ptr + 3] = vec[3];
-            ptr += 4;
+          if (lanes > 1) {
+            const vec = lanes === 4 ? normalizeVec4Value(val) : normalizeVec3Value(val);
+            for (let lane = 0; lane < lanes; lane += 1) {
+              flat[ptr + lane] = vec[lane];
+            }
+            ptr += lanes;
           } else {
             flat[ptr] = coerceTextureValue(val, normalized);
             ptr += 1;
@@ -7180,6 +7221,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const normalized = typeof typeOrFloat === 'string'
       ? normalizeTextureType(typeOrFloat)
       : (typeOrFloat ? 'float' : 'int');
+    if (normalized === 'vec3f') {
+      const v = normalizeVec3Value(val);
+      return [
+        Math.round(getFraction01(v[0]) * 255),
+        Math.round(getFraction01(v[1]) * 255),
+        Math.round(getFraction01(v[2]) * 255),
+        255,
+      ];
+    }
     if (normalized === 'vec4f') {
       const v = normalizeVec4Value(val);
       return [
@@ -7507,7 +7557,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           const iz = Math.floor(uvw[2] * tex.size.z);
           const val = tex.values[iz]?.[iy]?.[ix];
           const [r, g, b, a] = valueToRGBA(val, tex.type);
-          const alpha = isVec4Type(tex.type)
+          const alpha = isVectorFloatType(tex.type)
             ? (a ?? 255)
             : ((r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255));
           if ((alpha / 255) * alphaScale > 0.02) {
@@ -7561,7 +7611,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           for (let x = 0; x < tex.size.x; x += 1) {
             const v = tex.values[z]?.[y]?.[x];
             const [r, g, b, a] = valueToRGBA(v, tex.type);
-            const alpha = isVec4Type(tex.type)
+            const alpha = isVectorFloatType(tex.type)
               ? (a ?? 255)
               : ((r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255));
             data[ptr] = r;
@@ -7721,3 +7771,4 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const ratio = maxText > 0 ? textarea.scrollTop / maxText : 0;
     gutter.scrollTop = ratio * maxGutter;
   }
+
