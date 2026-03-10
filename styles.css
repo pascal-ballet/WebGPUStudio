@@ -793,6 +793,7 @@ select option, select optgroup {
 .panel-preview.fullscreen .preview-area {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: none;
   padding-top: 84px;
 }
 
@@ -1150,6 +1151,7 @@ input[type="range"] {
   overflow: auto;
   position: relative;
   min-height: 0;
+  max-height: min(100%, calc(100dvh - 260px));
 }
 
 #preview2D,
@@ -1943,3 +1945,6 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+
+
