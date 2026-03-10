@@ -148,8 +148,8 @@
     "type_int": "Entier (i32)",
     "type_uint": "Entier non signé (u32)",
     "type_float": "Flottant (f32)",
-    "type_vec3f": "Vecteur (vec3<f32>)",
-    "type_vec4f": "Vecteur (vec4<f32>)",
+    "type_vec3f": "Vecteur 3 (f32)",
+    "type_vec4f": "Vecteur 4 (f32)",
     "fill_empty": "Matrice vide (zéro)",
     "fill_random": "Remplissage aléatoire"
   },
