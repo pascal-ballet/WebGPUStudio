@@ -797,6 +797,14 @@ select option, select optgroup {
   padding-top: 84px;
 }
 
+.panel-preview.fullscreen.total-screen .preview-area {
+  padding-top: 0;
+}
+
+.panel-preview.fullscreen.total-screen .preview-fullscreen-controls {
+  display: none;
+}
+
 :root.preview-overlay .system-panel {
   display: none !important;
 }
@@ -1945,6 +1953,5 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
-
 
 

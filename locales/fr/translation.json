@@ -128,6 +128,7 @@
   "preview": {
     "speed": "Vitesse",
     "fullscreen": "Plein écran",
+    "total_screen": "Total Screen",
     "exit": "Retour",
     "none_selected": "Aucune texture sélectionnée",
     "values": "Val",
@@ -243,4 +244,3 @@
     "none_texture": "aucune texture"
   }
 }
-

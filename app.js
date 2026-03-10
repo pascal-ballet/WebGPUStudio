@@ -231,6 +231,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const runSpeedLabel = document.getElementById('runSpeedLabel');
   const previewPanel = document.getElementById('previewPanel');
   const previewFullscreenBtn = document.getElementById('previewFullscreenBtn');
+  const previewTotalScreenBtn = document.getElementById('previewTotalScreenBtn');
   const previewFullscreenControls = document.getElementById('previewFullscreenControls');
   const fsCompileBtn = document.getElementById('fsCompileBtn');
   const fsStepBtn = document.getElementById('fsStepBtn');
@@ -324,6 +325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let isCompiling = false;
   let isRunning = false;
   let isPaused = false;
+  let isTotalScreenMode = false;
   let timerId = null;
   let runIntervalMs = 16;
   let runUncapped = false;
@@ -999,10 +1001,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function updatePreviewFullscreenControlsVisibility() {
+    if (!previewPanel || !previewFullscreenControls) return;
+    const enabled = previewPanel.classList.contains('fullscreen');
+    const isTotal = previewPanel.classList.contains('total-screen');
+    previewFullscreenControls.classList.toggle('hidden', !enabled || isTotal);
+  }
+
   function setPreviewFullscreen(enabled) {
     if (!previewPanel) return;
     previewPanel.classList.toggle('fullscreen', Boolean(enabled));
-    if (previewFullscreenControls) previewFullscreenControls.classList.toggle('hidden', !enabled);
+    updatePreviewFullscreenControlsVisibility();
     try {
       const appRoot = document.querySelector('main.app');
       if (appRoot) appRoot.classList.toggle('preview-maximized', Boolean(enabled));
@@ -1021,6 +1030,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
     }
     schedulePreviewResize();
+  }
+
+  async function enterTotalScreen() {
+    if (!previewPanel) return;
+    isTotalScreenMode = true;
+    previewPanel.classList.add('total-screen');
+    setPreviewFullscreen(true);
+    if (typeof previewPanel.requestFullscreen !== 'function') {
+      isTotalScreenMode = false;
+      previewPanel.classList.remove('total-screen');
+      setPreviewFullscreen(false);
+      logConsole('Mode Total Screen indisponible sur ce navigateur.', 'run');
+      return;
+    }
+    try {
+      if (document.fullscreenElement !== previewPanel) {
+        await previewPanel.requestFullscreen({ navigationUI: 'hide' });
+      }
+    } catch (err) {
+      try {
+        if (document.fullscreenElement !== previewPanel) {
+          await previewPanel.requestFullscreen();
+        }
+      } catch (fallbackErr) {
+        isTotalScreenMode = false;
+        previewPanel.classList.remove('total-screen');
+        setPreviewFullscreen(false);
+        logConsole(`Mode Total Screen indisponible: ${fallbackErr.message || fallbackErr}`, 'run');
+      }
+    }
+  }
+
+  async function exitTotalScreen() {
+    isTotalScreenMode = false;
+    if (previewPanel) previewPanel.classList.remove('total-screen');
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch (e) {
+      }
+    }
+    setPreviewFullscreen(false);
   }
 
   function enableTabIndent(editor) {
@@ -3784,8 +3835,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     previewFullscreenBtn.addEventListener('click', () => setPreviewFullscreen(true));
   }
 
+  if (previewTotalScreenBtn) {
+    previewTotalScreenBtn.addEventListener('click', () => {
+      void enterTotalScreen();
+    });
+  }
+
   if (fsExitFullscreenBtn) {
-    fsExitFullscreenBtn.addEventListener('click', () => setPreviewFullscreen(false));
+    fsExitFullscreenBtn.addEventListener('click', () => {
+      if (isTotalScreenMode) {
+        void exitTotalScreen();
+      } else {
+        setPreviewFullscreen(false);
+      }
+    });
   }
 
   if (fsStepBtn) fsStepBtn.addEventListener('click', () => stepBtn?.click());
@@ -3793,9 +3856,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (fsPauseBtn) fsPauseBtn.addEventListener('click', () => pauseBtn?.click());
   if (fsStopBtn) fsStopBtn.addEventListener('click', () => stopBtn?.click());
 
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement === previewPanel) return;
+    if (!isTotalScreenMode) return;
+    isTotalScreenMode = false;
+    if (previewPanel) previewPanel.classList.remove('total-screen');
+    setPreviewFullscreen(false);
+  });
+
+  const isEditableTarget = (target) => {
+    if (!target) return false;
+    const tagName = (target.tagName || '').toUpperCase();
+    if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return true;
+    return Boolean(target.isContentEditable);
+  };
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && previewPanel && previewPanel.classList.contains('fullscreen')) {
-      setPreviewFullscreen(false);
+      if (isTotalScreenMode) {
+        e.preventDefault();
+        void exitTotalScreen();
+      } else {
+        setPreviewFullscreen(false);
+      }
+      return;
+    }
+    if (!isTotalScreenMode) return;
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    if (isEditableTarget(e.target)) return;
+    if (e.repeat) return;
+    e.preventDefault();
+    if (!isCompiled) return;
+    if (isRunning && !isPaused) {
+      pauseBtn?.click();
+    } else {
+      runBtn?.click();
     }
   });
 
@@ -7771,4 +7866,3 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const ratio = maxText > 0 ? textarea.scrollTop / maxText : 0;
     gutter.scrollTop = ratio * maxGutter;
   }
-
