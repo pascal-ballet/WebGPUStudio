@@ -485,6 +485,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return 1;
   }
 
+  function getTextureStorageStrideCount(type) {
+    // WGSL storage layout pads vec3<f32> to 16 bytes (4 floats stride).
+    return isVec3Type(type) ? 4 : getTextureComponentCount(type);
+  }
+
   function getTextureScalarWGSL(type) {
     const normalized = normalizeTextureType(type);
     if (normalized === 'float') return 'f32';
@@ -4294,8 +4299,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
   function ensureTextureBuffer(device, tex) {
     if (!device || !tex) return null;
-    const lanes = getTextureComponentCount(tex.type);
-    const size = Math.max(4, (tex.size.x * tex.size.y * tex.size.z) * lanes * 4);
+    const strideLanes = getTextureStorageStrideCount(tex.type);
+    const size = Math.max(4, (tex.size.x * tex.size.y * tex.size.z) * strideLanes * 4);
     let entry = textureBuffers.get(tex.id);
     if (!entry || entry.size !== size) {
       if (entry?.buffer) {
@@ -6647,7 +6652,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       bindings.set(idx, {
         binding: idx,
         scalar: getTextureScalarWGSL(tex.type),
-        components: getTextureComponentCount(tex.type),
+        components: getTextureStorageStrideCount(tex.type),
         length: tex.size.x * tex.size.y * tex.size.z,
         tex,
         usage: 'storage',
@@ -6903,6 +6908,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   function updateTextureValuesFromFlat(tex, flatArray) {
     const { x, y, z } = tex.size;
     const lanes = getTextureComponentCount(tex.type);
+    const strideLanes = getTextureStorageStrideCount(tex.type);
     tex.values = [];
     let ptr = 0;
     for (let k = 0; k < z; k += 1) {
@@ -6916,7 +6922,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
               vec.push(Number(flatArray[ptr + lane] ?? 0));
             }
             row.push(vec);
-            ptr += lanes;
+            ptr += strideLanes;
           } else {
             row.push(flatArray[ptr] ?? 0);
             ptr += 1;
@@ -6932,12 +6938,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     const { x, y, z } = tex.size;
     const total = x * y * z;
     const lanes = getTextureComponentCount(tex.type);
+    const strideLanes = getTextureStorageStrideCount(tex.type);
     const normalized = normalizeTextureType(tex.type);
     const isFloat = isFloatTextureType(normalized);
     const isUint = normalized === 'uint';
     const flat = isFloat
-      ? new Float32Array(total * lanes)
-      : (isUint ? new Uint32Array(total * lanes) : new Int32Array(total * lanes));
+      ? new Float32Array(total * strideLanes)
+      : (isUint ? new Uint32Array(total * strideLanes) : new Int32Array(total * strideLanes));
     let ptr = 0;
     for (let k = 0; k < z; k += 1) {
       for (let j = 0; j < y; j += 1) {
@@ -6948,7 +6955,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
             for (let lane = 0; lane < lanes; lane += 1) {
               flat[ptr + lane] = vec[lane];
             }
-            ptr += lanes;
+            ptr += strideLanes;
           } else {
             flat[ptr] = coerceTextureValue(val, normalized);
             ptr += 1;
