@@ -7012,6 +7012,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       throw new Error('Fichier invalide');
     }
     stopCurrentExecution(false);
+    consoleMessages = [];
+    renderConsole();
+    setConsoleTabHasError(false);
     if (Object.prototype.hasOwnProperty.call(data, 'projectName')) {
       setProjectName(data.projectName);
     }
