@@ -634,6 +634,10 @@ select option, select optgroup {
   flex-wrap: wrap;
 }
 
+#tutosBtn {
+  display: none;
+}
+
 .examples-menu {
   position: absolute;
   top: calc(100% + 8px);

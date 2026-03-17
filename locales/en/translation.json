@@ -149,8 +149,8 @@
     "type_int": "Integer (i32)",
     "type_uint": "Unsigned integer (u32)",
     "type_float": "Float (f32)",
-    "type_vec3f": "Vector 3(f32)",
-    "type_vec4f": "Vector 4(f32)",
+    "type_vec3f": "Vector 3 (f32)",
+    "type_vec4f": "Vector 4 (f32)",
     "fill_empty": "Empty matrix (zero)",
     "fill_random": "Random fill"
   },
@@ -244,3 +244,4 @@
     "none_texture": "no texture"
   }
 }
+
