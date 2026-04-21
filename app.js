@@ -469,11 +469,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     return normalizeTextureType(type) === 'vec4f';
   }
 
-  function isVectorFloatType(type) {
-    const normalized = normalizeTextureType(type);
-    return normalized === 'vec3f' || normalized === 'vec4f';
-  }
-
   function isFloatTextureType(type) {
     const normalized = normalizeTextureType(type);
     return normalized === 'float' || normalized === 'vec3f' || normalized === 'vec4f';
@@ -534,6 +529,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getFraction01(value) {
     const n = Number(value) || 0;
     return Math.abs(n - Math.floor(n));
+  }
+
+  function fractionalVec3ToRGB(value) {
+    const v = normalizeVec3Value(value);
+    return [
+      Math.round(getFraction01(v[0]) * 255),
+      Math.round(getFraction01(v[1]) * 255),
+      Math.round(getFraction01(v[2]) * 255),
+    ];
+  }
+
+  function voxelRGBAAlpha(type, rgba) {
+    const normalized = normalizeTextureType(type);
+    const [r, g, b, a = 255] = rgba;
+    if (normalized === 'vec3f') {
+      return Math.max(r, g, b);
+    }
+    if (normalized === 'vec4f') {
+      return a;
+    }
+    return (r === 0 && g === 0 && b === 0) ? 0 : a;
   }
 
   function setPreviewValue(x,y,val,valType = null) {
@@ -7327,13 +7343,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       ? normalizeTextureType(typeOrFloat)
       : (typeOrFloat ? 'float' : 'int');
     if (normalized === 'vec3f') {
-      const v = normalizeVec3Value(val);
-      return [
-        Math.round(getFraction01(v[0]) * 255),
-        Math.round(getFraction01(v[1]) * 255),
-        Math.round(getFraction01(v[2]) * 255),
-        255,
-      ];
+      const [r, g, b] = fractionalVec3ToRGB(val);
+      return [r, g, b, 255];
     }
     if (normalized === 'vec4f') {
       const v = normalizeVec4Value(val);
@@ -7661,10 +7672,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           const iy = Math.floor(uvw[1] * tex.size.y);
           const iz = Math.floor(uvw[2] * tex.size.z);
           const val = tex.values[iz]?.[iy]?.[ix];
-          const [r, g, b, a] = valueToRGBA(val, tex.type);
-          const alpha = isVectorFloatType(tex.type)
-            ? (a ?? 255)
-            : ((r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255));
+          const rgba = valueToRGBA(val, tex.type);
+          const alpha = voxelRGBAAlpha(tex.type, rgba);
           if ((alpha / 255) * alphaScale > 0.02) {
             return val;
           }
@@ -7715,10 +7724,9 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         for (let y = 0; y < tex.size.y; y += 1) {
           for (let x = 0; x < tex.size.x; x += 1) {
             const v = tex.values[z]?.[y]?.[x];
-            const [r, g, b, a] = valueToRGBA(v, tex.type);
-            const alpha = isVectorFloatType(tex.type)
-              ? (a ?? 255)
-              : ((r === 0 && g === 0 && b === 0) ? 0 : (a ?? 255));
+            const rgba = valueToRGBA(v, tex.type);
+            const [r, g, b] = rgba;
+            const alpha = voxelRGBAAlpha(tex.type, rgba);
             data[ptr] = r;
             data[ptr + 1] = g;
             data[ptr + 2] = b;
