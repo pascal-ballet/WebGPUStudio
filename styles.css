@@ -6,9 +6,19 @@
   --text: #e6edf7;
   --muted: #9fb3d7;
   --border: rgba(255, 255, 255, 0.08);
-  --wgsl-paren: #7dd3fc;
-  --wgsl-brace: #fca5a5;
-  --wgsl-ident: #e6edf7;
+  --rust-ident: #dbe7f4;
+  --rust-keyword: #ff7b72;
+  --rust-type: #79c0ff;
+  --rust-function: #d2a8ff;
+  --rust-macro: #ffa657;
+  --rust-string: #a5d6ff;
+  --rust-number: #f2cc60;
+  --rust-comment: #8b949e;
+  --rust-attribute: #7ee787;
+  --rust-lifetime: #ffab70;
+  --rust-operator: #ff7b72;
+  --rust-paren: #7dd3fc;
+  --rust-brace: #fca5a5;
   --shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   --radius: 14px;
   font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
@@ -1395,15 +1405,14 @@ textarea {
 .code-editor {
   min-height: 420px;
   width: 100%;
-  background: radial-gradient(circle at 10% 20%, rgba(124, 247, 196, 0.07), transparent 35%),
-              rgba(255, 255, 255, 0.02);
+  background: rgba(8, 13, 26, 0.84);
   border: 1px dashed var(--border);
   outline: none;
   padding: var(--code-padding);
   box-sizing: border-box;
   line-height: var(--code-line-height);
-  letter-spacing: 0.02em;
-  font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: var(--code-font-size);
   white-space: pre;
   overflow-wrap: normal;
@@ -1418,19 +1427,24 @@ textarea {
 
 .code-editor-shell {
   display: grid;
-  grid-template-columns: 56px 1fr;
-  border-radius: 12px;
+  grid-template-columns: 64px minmax(0, 1fr);
+  border-radius: 8px;
   overflow: hidden;
-  border: 1px dashed var(--border);
-  --code-line-height: 20px;
+  border: 1px solid rgba(124, 247, 196, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --code-line-height: 21px;
   --code-font-size: 14px;
-  --code-padding: 12px;
+  --code-padding: 14px;
+}
+
+.rust-code-editor {
+  background: rgba(8, 13, 26, 0.92);
 }
 
 .code-editor-layer {
   position: relative;
-  background: radial-gradient(circle at 10% 20%, rgba(124, 247, 196, 0.07), transparent 35%),
-              rgba(255, 255, 255, 0.02);
+  min-width: 0;
+  background: rgba(8, 13, 26, 0.92);
 }
 
 .code-editor-layer .code-highlight {
@@ -1440,14 +1454,14 @@ textarea {
   padding: var(--code-padding);
   box-sizing: border-box;
   z-index: 0;
-  font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
-  color: var(--wgsl-ident);
+  color: var(--rust-ident);
   pointer-events: none;
   overflow: auto;
   scrollbar-width: none;
@@ -1468,19 +1482,30 @@ textarea {
   -webkit-text-fill-color: transparent;
 }
 
-.wgsl-highlight .tok-paren { color: var(--wgsl-paren); }
-.wgsl-highlight .tok-brace { color: var(--wgsl-brace); }
+.rust-highlight .tok-keyword { color: var(--rust-keyword); font-weight: 700; }
+.rust-highlight .tok-type { color: var(--rust-type); }
+.rust-highlight .tok-function { color: var(--rust-function); }
+.rust-highlight .tok-builtin { color: var(--rust-macro); }
+.rust-highlight .tok-macro { color: var(--rust-macro); font-weight: 700; }
+.rust-highlight .tok-string { color: var(--rust-string); }
+.rust-highlight .tok-number { color: var(--rust-number); }
+.rust-highlight .tok-comment { color: var(--rust-comment); font-style: italic; }
+.rust-highlight .tok-attribute { color: var(--rust-attribute); }
+.rust-highlight .tok-lifetime { color: var(--rust-lifetime); }
+.rust-highlight .tok-operator { color: var(--rust-operator); }
+.rust-highlight .tok-paren { color: var(--rust-paren); }
+.rust-highlight .tok-brace { color: var(--rust-brace); }
 
 .code-editor-shell .code-lines {
-  background: rgba(255, 255, 255, 0.01);
+  background: rgba(4, 8, 18, 0.72);
   border: 0;
-  border-right: 1px dashed var(--border);
-  padding: 12px;
-  font-family: 'Space Grotesk', ui-monospace, SFMono-Regular, Consolas, monospace;
+  border-right: 1px solid rgba(124, 247, 196, 0.12);
+  padding: var(--code-padding) 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0;
+  color: #60a5fa;
   text-align: right;
   overflow-y: auto;
   scrollbar-width: none;
@@ -1821,12 +1846,6 @@ textarea {
   background: rgba(255, 255, 255, 0.55);
 }
 
-:root[data-theme="light"] {
-  --wgsl-paren: #0ea5e9;
-  --wgsl-brace: #dc2626;
-  --wgsl-ident: #000000;
-}
-
 :root[data-theme="light"] .list-item {
   background: rgba(255, 255, 255, 0.78);
 }
@@ -1856,28 +1875,47 @@ textarea {
   background: rgba(255, 255, 255, 0.80);
 }
 
+:root[data-theme="light"] {
+  --rust-ident: #111827;
+  --rust-keyword: #b91c1c;
+  --rust-type: #1d4ed8;
+  --rust-function: #7c3aed;
+  --rust-macro: #b45309;
+  --rust-string: #047857;
+  --rust-number: #a16207;
+  --rust-comment: #6b7280;
+  --rust-attribute: #15803d;
+  --rust-lifetime: #c2410c;
+  --rust-operator: #be123c;
+  --rust-paren: #0369a1;
+  --rust-brace: #b91c1c;
+}
+
 :root[data-theme="light"] .code-editor {
-  background: radial-gradient(circle at 10% 20%, rgba(17, 24, 39, 0.04), transparent 35%),
-              rgba(255, 255, 255, 0.70);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+:root[data-theme="light"] .code-editor-shell {
+  border-color: rgba(17, 24, 39, 0.12);
 }
 
 :root[data-theme="light"] .code-editor-layer {
-  background: radial-gradient(circle at 10% 20%, rgba(17, 24, 39, 0.07), transparent 35%),
-              rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.86);
 }
 
 :root[data-theme="light"] .code-editor-shell .code-lines {
-  background: rgba(17, 24, 39, 0.02);
-  color: rgba(17, 24, 39, 0.7);
+  background: rgba(17, 24, 39, 0.04);
+  border-right-color: rgba(17, 24, 39, 0.12);
+  color: #2563eb;
 }
 
 :root[data-theme="light"] .code-editor-layer .code-highlight {
-  color: #000000;
+  color: var(--rust-ident);
   opacity: 1;
 }
 
-:root[data-theme="light"] .wgsl-highlight {
-  color: #000000;
+:root[data-theme="light"] .rust-highlight {
+  color: var(--rust-ident);
 }
 
 :root[data-theme="light"] .code-editor-layer .code-editor {

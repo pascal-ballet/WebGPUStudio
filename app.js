@@ -1114,7 +1114,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  const WGSL_BRACE_REGEX = /[(){}]/g;
+  const RUST_KEYWORDS = new Set([
+    'as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn', 'else', 'enum',
+    'extern', 'false', 'fn', 'for', 'if', 'impl', 'in', 'let', 'loop', 'match', 'mod',
+    'move', 'mut', 'pub', 'ref', 'return', 'self', 'Self', 'static', 'struct', 'super',
+    'trait', 'true', 'type', 'unsafe', 'use', 'where', 'while',
+    'abstract', 'become', 'box', 'do', 'final', 'macro', 'override', 'priv', 'try',
+    'typeof', 'unsized', 'virtual', 'yield',
+  ]);
+  const RUST_TYPES = new Set([
+    'bool', 'char', 'str', 'String',
+    'i8', 'i16', 'i32', 'i64', 'i128', 'isize',
+    'u8', 'u16', 'u32', 'u64', 'u128', 'usize',
+    'f32', 'f64',
+    'Vec', 'Option', 'Result', 'Some', 'None', 'Ok', 'Err',
+    'array', 'atomic', 'mat2x2', 'mat2x3', 'mat2x4', 'mat3x2', 'mat3x3', 'mat3x4',
+    'mat4x2', 'mat4x3', 'mat4x4', 'ptr', 'vec2', 'vec3', 'vec4',
+  ]);
+  const RUST_BUILTINS = new Set([
+    'drop', 'format', 'panic', 'println', 'todo', 'unreachable', 'vec',
+    'abs', 'acos', 'asin', 'atan', 'ceil', 'clamp', 'cos', 'dot', 'exp', 'floor',
+    'length', 'max', 'min', 'normalize', 'pow', 'round', 'sin', 'sqrt', 'tan',
+  ]);
 
   function escapeHtml(text) {
     return String(text)
@@ -1123,17 +1144,221 @@ document.addEventListener('DOMContentLoaded', async () => {
       .replace(/>/g, '&gt;');
   }
 
-  function highlightWGSL(code) {
-    const escaped = escapeHtml(code || '');
-    return escaped.replace(WGSL_BRACE_REGEX, (match) => {
-      const cls = match === '{' || match === '}' ? 'tok-brace' : 'tok-paren';
-      return `<span class="${cls}">${match}</span>`;
-    });
+  function isRustIdentifierStart(ch) {
+    return /[A-Za-z_]/.test(ch || '');
   }
 
-  function syncWGSLHighlight(textarea, highlightEl) {
+  function isRustIdentifierPart(ch) {
+    return /[A-Za-z0-9_]/.test(ch || '');
+  }
+
+  function tokenSpan(cls, text) {
+    return `<span class="${cls}">${escapeHtml(text)}</span>`;
+  }
+
+  function findRustRawStringEnd(code, start, hashes) {
+    const needle = `"${'#'.repeat(hashes)}`;
+    const idx = code.indexOf(needle, start);
+    return idx === -1 ? code.length : idx + needle.length;
+  }
+
+  function readRustRawString(code, i) {
+    let j = i + 1;
+    if (code[i] === 'b' && code[i + 1] === 'r') {
+      j = i + 2;
+    }
+    let hashes = 0;
+    while (code[j] === '#') {
+      hashes += 1;
+      j += 1;
+    }
+    if (code[j] !== '"') return null;
+    const end = findRustRawStringEnd(code, j + 1, hashes);
+    return { end, text: code.slice(i, end) };
+  }
+
+  function readQuotedString(code, i) {
+    const quote = code[i];
+    let j = i + 1;
+    while (j < code.length) {
+      if (code[j] === '\\') {
+        j += 2;
+        continue;
+      }
+      if (code[j] === quote) {
+        j += 1;
+        break;
+      }
+      if (quote === "'" && /[\r\n]/.test(code[j])) break;
+      j += 1;
+    }
+    return code.slice(i, j);
+  }
+
+  function readNumberToken(code, i) {
+    let j = i;
+    if (code[j] === '0' && /[xXbBoO]/.test(code[j + 1] || '')) {
+      j += 2;
+      while (/[A-Fa-f0-9_]/.test(code[j] || '')) j += 1;
+    } else {
+      while (/[0-9_]/.test(code[j] || '')) j += 1;
+      if (code[j] === '.' && code[j + 1] !== '.' && /[0-9]/.test(code[j + 1] || '')) {
+        j += 1;
+        while (/[0-9_]/.test(code[j] || '')) j += 1;
+      }
+      if (/[eE]/.test(code[j] || '')) {
+        const expStart = j;
+        j += 1;
+        if (/[+-]/.test(code[j] || '')) j += 1;
+        if (/[0-9]/.test(code[j] || '')) {
+          while (/[0-9_]/.test(code[j] || '')) j += 1;
+        } else {
+          j = expStart;
+        }
+      }
+    }
+    while (/[A-Za-z0-9_]/.test(code[j] || '')) j += 1;
+    return code.slice(i, j);
+  }
+
+  function highlightRust(code) {
+    const src = String(code || '');
+    let out = '';
+    let i = 0;
+
+    while (i < src.length) {
+      const ch = src[i];
+      const next = src[i + 1] || '';
+
+      if (ch === '/' && next === '/') {
+        const end = src.indexOf('\n', i);
+        const text = end === -1 ? src.slice(i) : src.slice(i, end);
+        out += tokenSpan('tok-comment', text);
+        i += text.length;
+        continue;
+      }
+
+      if (ch === '/' && next === '*') {
+        const end = src.indexOf('*/', i + 2);
+        const stop = end === -1 ? src.length : end + 2;
+        out += tokenSpan('tok-comment', src.slice(i, stop));
+        i = stop;
+        continue;
+      }
+
+      if ((ch === 'r' || (ch === 'b' && next === 'r')) && !isRustIdentifierPart(src[i - 1])) {
+        const raw = readRustRawString(src, i);
+        if (raw) {
+          out += tokenSpan('tok-string', raw.text);
+          i = raw.end;
+          continue;
+        }
+      }
+
+      if (ch === '"' || (ch === 'b' && next === '"')) {
+        const start = ch === 'b' ? i + 1 : i;
+        const text = (ch === 'b' ? 'b' : '') + readQuotedString(src, start);
+        out += tokenSpan('tok-string', text);
+        i += text.length;
+        continue;
+      }
+
+      if (ch === "'" && (next === '\\' || src[i + 2] === "'")) {
+        const quoted = readQuotedString(src, i);
+        out += tokenSpan('tok-string', quoted);
+        i += quoted.length;
+        continue;
+      }
+
+      if (ch === "'" && isRustIdentifierStart(next)) {
+        let j = i + 2;
+        while (isRustIdentifierPart(src[j])) j += 1;
+        if (src[j] === "'") {
+          const quoted = readQuotedString(src, i);
+          out += tokenSpan('tok-string', quoted);
+          i += quoted.length;
+        } else {
+          out += tokenSpan('tok-lifetime', src.slice(i, j));
+          i = j;
+        }
+        continue;
+      }
+
+      if (ch === '#' && (next === '[' || (next === '!' && src[i + 2] === '['))) {
+        const end = src.indexOf(']', i + 1);
+        const stop = end === -1 ? src.length : end + 1;
+        out += tokenSpan('tok-attribute', src.slice(i, stop));
+        i = stop;
+        continue;
+      }
+
+      if (ch === '@' && isRustIdentifierStart(next)) {
+        let j = i + 2;
+        while (isRustIdentifierPart(src[j])) j += 1;
+        out += tokenSpan('tok-attribute', src.slice(i, j));
+        i = j;
+        continue;
+      }
+
+      if (/[0-9]/.test(ch)) {
+        const token = readNumberToken(src, i);
+        out += tokenSpan('tok-number', token);
+        i += token.length;
+        continue;
+      }
+
+      if (isRustIdentifierStart(ch)) {
+        let j = i + 1;
+        while (isRustIdentifierPart(src[j])) j += 1;
+        const ident = src.slice(i, j);
+        if (src[j] === '!' && src[j + 1] !== '=') {
+          out += tokenSpan('tok-macro', `${ident}!`);
+          i = j + 1;
+          continue;
+        }
+        if (RUST_KEYWORDS.has(ident)) {
+          out += tokenSpan('tok-keyword', ident);
+        } else if (RUST_TYPES.has(ident)) {
+          out += tokenSpan('tok-type', ident);
+        } else if (RUST_BUILTINS.has(ident)) {
+          out += tokenSpan('tok-builtin', ident);
+        } else if (src[j] === '(') {
+          out += tokenSpan('tok-function', ident);
+        } else {
+          out += escapeHtml(ident);
+        }
+        i = j;
+        continue;
+      }
+
+      if (ch === '{' || ch === '}') {
+        out += tokenSpan('tok-brace', ch);
+        i += 1;
+        continue;
+      }
+
+      if (ch === '(' || ch === ')' || ch === '[' || ch === ']') {
+        out += tokenSpan('tok-paren', ch);
+        i += 1;
+        continue;
+      }
+
+      if (/[+\-*%=!<>|&^~?:.,;]/.test(ch)) {
+        out += tokenSpan('tok-operator', ch);
+        i += 1;
+        continue;
+      }
+
+      out += escapeHtml(ch);
+      i += 1;
+    }
+
+    return out;
+  }
+
+  function syncRustHighlight(textarea, highlightEl) {
     if (!textarea || !highlightEl) return;
-    const html = highlightWGSL(textarea.value || '');
+    const html = highlightRust(textarea.value || '');
     highlightEl.innerHTML = `${html}\n`;
     syncHighlightScroll(textarea, highlightEl);
   }
@@ -3197,13 +3422,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateMouseBtnUniformBuffer();
   }
 
+  function getDisplayedBufferSize() {
+    const tex = textures.find((t) => t.id === selectedTextureId);
+    const size = tex?.size || {};
+    const readSize = (value) => {
+      const n = Math.floor(Number(value));
+      return Number.isFinite(n) && n > 0 ? n : 1;
+    };
+    return {
+      x: readSize(size.x),
+      y: readSize(size.y),
+      z: readSize(size.z),
+    };
+  }
+
+  function clampMouseCoordinate(value, extent) {
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n)) return 0;
+    return clamp(n, 0, Math.max(0, extent - 1)) >>> 0;
+  }
+
   function setMouseUniformPosition(x, y, z, isInside) {
+    const size = getDisplayedBufferSize();
     const nextX = isInside ? x : mouseXValue;
     const nextY = isInside ? y : mouseYValue;
     const nextZ = z ?? mouseZValue;
-    mouseXValue = nextX;
-    mouseYValue = nextY;
-    mouseZValue = nextZ;
+    mouseXValue = clampMouseCoordinate(nextX, size.x);
+    mouseYValue = clampMouseCoordinate(nextY, size.y);
+    mouseZValue = clampMouseCoordinate(nextZ, size.z);
     updateMouseUniformBuffer();
   }
 
@@ -4772,7 +5018,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateFunctionStats(fn.code);
     scheduleLiveDiagnostics();
     renderLineNumbers(functionEditor, functionGutter);
-    syncWGSLHighlight(functionEditor, functionHighlight);
+    syncRustHighlight(functionEditor, functionHighlight);
   });
   enableTabIndent(functionEditor);
 
@@ -4974,7 +5220,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateTextureDeclarationsEditor();
     scheduleLiveDiagnostics();
     renderLineNumbers(shaderEditor, shaderGutter);
-    syncWGSLHighlight(shaderEditor, shaderHighlight);
+    syncRustHighlight(shaderEditor, shaderHighlight);
   });
   enableTabIndent(shaderEditor);
 
@@ -6033,7 +6279,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       updateFunctionStats('');
       renderDiagnosticsPanels();
       renderLineNumbers(functionEditor, functionGutter);
-      syncWGSLHighlight(functionEditor, functionHighlight);
+      syncRustHighlight(functionEditor, functionHighlight);
       return;
     }
     functionEditor.disabled = false;
@@ -6041,7 +6287,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateFunctionStats(fn.code);
     scheduleLiveDiagnostics();
     renderLineNumbers(functionEditor, functionGutter);
-    syncWGSLHighlight(functionEditor, functionHighlight);
+    syncRustHighlight(functionEditor, functionHighlight);
   }
 
   function renderFunctionViews() {
@@ -7251,7 +7497,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       updateShaderLines('');
       renderDiagnosticsPanels();
       renderLineNumbers(shaderEditor, shaderGutter);
-      syncWGSLHighlight(shaderEditor, shaderHighlight);
+      syncRustHighlight(shaderEditor, shaderHighlight);
       return;
     }
     shaderEditor.disabled = false;
@@ -7259,7 +7505,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateShaderLines(shader.code);
     scheduleLiveDiagnostics();
     renderLineNumbers(shaderEditor, shaderGutter);
-    syncWGSLHighlight(shaderEditor, shaderHighlight);
+    syncRustHighlight(shaderEditor, shaderHighlight);
   }
 
   function updateShaderLines(code) {
@@ -7430,6 +7676,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         setMouseUniformPosition(0, 0, sliceIndex, false);
       }
     };
+    canvas.addEventListener('pointerdown', handleHover);
     canvas.addEventListener('pointermove', handleHover);
     canvas.addEventListener('pointerleave', () => {
       setPreviewValue(0,0,null);
@@ -7605,6 +7852,12 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         const maxPitch = 1.5;
         this.rotX = Math.max(-maxPitch, Math.min(maxPitch, this.rotX));
         this.render();
+        if (this.currentTex && this.onHover) {
+          const rect = this.canvas.getBoundingClientRect();
+          const inside = e.clientX >= rect.left && e.clientX <= rect.right
+            && e.clientY >= rect.top && e.clientY <= rect.bottom;
+          if (inside) this.onHover(this.pickValue(e.clientX, e.clientY));
+        }
       };
       const onWheel = (e) => {
         e.preventDefault();
@@ -7612,16 +7865,21 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
         const next = this.camDist * zoom;
         this.camDist = Math.max(minCamDist, Math.min(maxCamDist, next));
         this.render();
+        onHover(e);
       };
       const onHover = (e) => {
         if (!this.currentTex || !this.onHover) return;
-        const val = this.pickValue(e.clientX, e.clientY);
-        this.onHover(val);
+        const hit = this.pickValue(e.clientX, e.clientY);
+        this.onHover(hit);
       };
       const onLeave = () => {
         if (this.onHover) this.onHover(null);
       };
-      this.canvas.addEventListener('pointerdown', onDown);
+      const onPointerDown = (e) => {
+        onDown(e);
+        onHover(e);
+      };
+      this.canvas.addEventListener('pointerdown', onPointerDown);
       this.canvas.addEventListener('pointermove', onHover);
       this.canvas.addEventListener('pointerleave', onLeave);
       this.canvas.addEventListener('wheel', onWheel, { passive: false });
@@ -7675,7 +7933,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
           const rgba = valueToRGBA(val, tex.type);
           const alpha = voxelRGBAAlpha(tex.type, rgba);
           if ((alpha / 255) * alphaScale > 0.02) {
-            return val;
+            return { x: ix, y: iy, z: iz, value: val };
           }
         }
         t += step;
@@ -7810,8 +8068,13 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (!voxelRenderer) {
       voxelRenderer = new VoxelRenderer(preview3D, null);
     }
-    // Désactive l'affichage de valeur en 3D
-    voxelRenderer.onHover = null;
+    voxelRenderer.onHover = (hit) => {
+      if (!hit) {
+        setMouseUniformPosition(0, 0, mouseZValue, false);
+        return;
+      }
+      setMouseUniformPosition(hit.x, hit.y, hit.z, true);
+    };
     if (!voxelRenderer.isValid) {
       preview3D.innerHTML = '<p class="eyebrow">WebGL2 requis pour l’aperçu 3D RGBA.</p>';
       return;
