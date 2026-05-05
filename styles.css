@@ -1427,7 +1427,7 @@ textarea {
 
 .code-editor-shell {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr);
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid rgba(124, 247, 196, 0.14);
@@ -1496,36 +1496,39 @@ textarea {
 .rust-highlight .tok-paren { color: var(--rust-paren); }
 .rust-highlight .tok-brace { color: var(--rust-brace); }
 
-.code-editor-shell .code-lines {
+.code-editor-shell .code-rail {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
   background: rgba(4, 8, 18, 0.72);
-  border: 0;
   border-right: 1px solid rgba(124, 247, 196, 0.12);
-  padding: var(--code-padding) 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: var(--code-font-size);
   line-height: var(--code-line-height);
   letter-spacing: 0;
-  color: #60a5fa;
-  text-align: right;
-  overflow-y: auto;
-  scrollbar-width: none;
+  color: rgba(148, 163, 184, 0.72);
+  user-select: none;
   tab-size: 2;
+}
+
+.code-editor-shell .code-rail-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding-right: 10px;
   box-sizing: border-box;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.code-editor-shell .code-lines::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+.code-editor-shell .code-rail-line.active {
+  color: #7cf7c4;
+  background: rgba(124, 247, 196, 0.08);
 }
 
-.code-editor-shell .code-lines .code-line-num {
-  display: block;
-  height: var(--code-line-height);
-  line-height: var(--code-line-height);
-}
-
-.code-editor-shell .code-lines .code-line-num.error {
+.code-editor-shell .code-rail-line.error {
   color: #ffb3ad;
+  background: rgba(255, 138, 122, 0.10);
 }
 
 .code-editor-shell .code-editor {
@@ -1903,10 +1906,20 @@ textarea {
   background: rgba(255, 255, 255, 0.86);
 }
 
-:root[data-theme="light"] .code-editor-shell .code-lines {
+:root[data-theme="light"] .code-editor-shell .code-rail {
   background: rgba(17, 24, 39, 0.04);
   border-right-color: rgba(17, 24, 39, 0.12);
-  color: #2563eb;
+  color: rgba(71, 85, 105, 0.76);
+}
+
+:root[data-theme="light"] .code-editor-shell .code-rail-line.active {
+  color: #047857;
+  background: rgba(4, 120, 87, 0.08);
+}
+
+:root[data-theme="light"] .code-editor-shell .code-rail-line.error {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.08);
 }
 
 :root[data-theme="light"] .code-editor-layer .code-highlight {

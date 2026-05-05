@@ -2985,28 +2985,121 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  function syncGutterHeight(textarea, gutter) {
-    if (!textarea || !gutter) return;
+  function syncEditorRailHeight(textarea, rail) {
+    if (!textarea || !rail) return;
     const h = textarea.getBoundingClientRect().height;
     if (!Number.isFinite(h) || h <= 0) return;
-    gutter.style.height = `${h}px`;
+    rail.style.height = `${h}px`;
   }
 
-  function renderLineNumbers(textarea, gutter, errorLines = new Set()) {
-    if (!textarea || !gutter) return;
+  function getTextareaLineCount(textarea) {
     const value = textarea.value || '';
-    const lines = value ? value.split(/\r?\n/).length : 1;
-    const fragment = document.createDocumentFragment();
-    for (let i = 1; i <= lines; i += 1) {
-      const div = document.createElement('div');
-      div.className = errorLines.has(i) ? 'code-line-num error' : 'code-line-num';
-      div.textContent = String(i);
-      fragment.appendChild(div);
+    return value ? value.split(/\r?\n/).length : 1;
+  }
+
+  function getTextareaCaretLine(textarea) {
+    const value = textarea.value || '';
+    const cursor = Math.max(0, Math.min(textarea.selectionStart || 0, value.length));
+    const beforeCursor = value.slice(0, cursor);
+    return beforeCursor ? beforeCursor.split(/\r?\n/).length : 1;
+  }
+
+  function normalizeLineSet(lines) {
+    const out = new Set();
+    if (!lines || typeof lines.forEach !== 'function') return out;
+    lines.forEach((line) => {
+      const n = Number(line);
+      if (Number.isFinite(n) && n > 0) out.add(Math.floor(n));
+    });
+    return out;
+  }
+
+  function getEditorLineMetrics(textarea) {
+    const style = window.getComputedStyle(textarea);
+    const lineHeight = parseFloat(style.lineHeight) || 21;
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    return {
+      lineHeight,
+      paddingTop,
+      scrollTop: textarea.scrollTop || 0,
+      clientHeight: textarea.clientHeight || textarea.getBoundingClientRect().height || 0,
+    };
+  }
+
+  function appendRailLine(rail, line, top, lineHeight, isActive, isError) {
+    const marker = document.createElement('div');
+    marker.className = [
+      'code-rail-line',
+      isActive ? 'active' : '',
+      isError ? 'error' : '',
+    ].filter(Boolean).join(' ');
+    marker.style.top = `${top}px`;
+    marker.style.height = `${lineHeight}px`;
+    marker.style.lineHeight = `${lineHeight}px`;
+    marker.textContent = String(line);
+    rail.appendChild(marker);
+  }
+
+  function renderEditorRail(textarea, rail, errorLines = new Set()) {
+    if (!textarea || !rail) return;
+    syncEditorRailHeight(textarea, rail);
+    const lineCount = getTextareaLineCount(textarea);
+    const caretLine = getTextareaCaretLine(textarea);
+    const safeErrorLines = normalizeLineSet(errorLines);
+    const metrics = getEditorLineMetrics(textarea);
+    const startLine = Math.max(
+      1,
+      Math.floor((metrics.scrollTop - metrics.paddingTop) / metrics.lineHeight) - 1,
+    );
+    const endLine = Math.min(
+      lineCount,
+      Math.ceil((metrics.scrollTop + metrics.clientHeight - metrics.paddingTop) / metrics.lineHeight) + 2,
+    );
+
+    rail._errorLines = safeErrorLines;
+    rail.innerHTML = '';
+    for (let line = startLine; line <= endLine; line += 1) {
+      appendRailLine(
+        rail,
+        line,
+        metrics.paddingTop + (line - 1) * metrics.lineHeight - metrics.scrollTop,
+        metrics.lineHeight,
+        line === caretLine,
+        safeErrorLines.has(line),
+      );
     }
-    gutter.innerHTML = '';
-    gutter.appendChild(fragment);
-    syncGutterScroll(textarea, gutter);
-    syncGutterHeight(textarea, gutter);
+  }
+
+  function refreshEditorRail(textarea, rail) {
+    if (!textarea || !rail) return;
+    renderEditorRail(textarea, rail, rail._errorLines || new Set());
+  }
+
+  function clearEditorRailErrors(textarea, rail) {
+    if (!textarea || !rail) return;
+    renderEditorRail(textarea, rail, new Set());
+  }
+
+  function renderEditorRailErrors(textarea, rail, errorLines) {
+    if (!textarea || !rail) return;
+    renderEditorRail(textarea, rail, errorLines);
+  }
+
+  function attachEditorRailEvents(textarea, rail, highlight) {
+    if (!textarea || !rail) return;
+    textarea.addEventListener('scroll', () => {
+      refreshEditorRail(textarea, rail);
+      if (highlight) syncHighlightScroll(textarea, highlight);
+    });
+    ['click', 'focus', 'keyup', 'select'].forEach((eventName) => {
+      textarea.addEventListener(eventName, () => refreshEditorRail(textarea, rail));
+    });
+  }
+
+  function notifyEditorRailChanged(textarea) {
+    if (!textarea) return;
+    textarea.dispatchEvent(new Event('select', { bubbles: true }));
+    textarea.dispatchEvent(new Event('scroll', { bubbles: true }));
   }
 
   function firstErrorLocation(kind, id) {
@@ -3667,6 +3760,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       textarea.scrollTop = Math.max(0, (safeLine - 1) * lineHeight - textarea.clientHeight / 3);
     } catch (e) {
     }
+    notifyEditorRailChanged(textarea);
   }
 
   function resolveWGSLLocation(globalLoc, map) {
@@ -3938,8 +4032,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         .map((e) => e.resolved?.line)
         .filter((n) => Number.isFinite(n)),
     );
-    renderLineNumbers(shaderEditor, shaderGutter, shaderErrorLines);
-    renderLineNumbers(functionEditor, functionGutter, functionErrorLines);
+    renderEditorRailErrors(shaderEditor, shaderGutter, shaderErrorLines);
+    renderEditorRailErrors(functionEditor, functionGutter, functionErrorLines);
 
     updateListErrorIndicators();
   }
@@ -5017,7 +5111,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     fn.code = e.target.value;
     updateFunctionStats(fn.code);
     scheduleLiveDiagnostics();
-    renderLineNumbers(functionEditor, functionGutter);
+    clearEditorRailErrors(functionEditor, functionGutter);
     syncRustHighlight(functionEditor, functionHighlight);
   });
   enableTabIndent(functionEditor);
@@ -5219,33 +5313,25 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     updateShaderLines(shader.code);
     updateTextureDeclarationsEditor();
     scheduleLiveDiagnostics();
-    renderLineNumbers(shaderEditor, shaderGutter);
+    clearEditorRailErrors(shaderEditor, shaderGutter);
     syncRustHighlight(shaderEditor, shaderHighlight);
   });
   enableTabIndent(shaderEditor);
 
-  if (shaderEditor && shaderGutter) {
-    shaderEditor.addEventListener('scroll', () => {
-      syncGutterScroll(shaderEditor, shaderGutter);
-      if (shaderHighlight) syncHighlightScroll(shaderEditor, shaderHighlight);
-    });
-  }
-
-  if (functionEditor && functionGutter) {
-    functionEditor.addEventListener('scroll', () => {
-      syncGutterScroll(functionEditor, functionGutter);
-      if (functionHighlight) syncHighlightScroll(functionEditor, functionHighlight);
-    });
-  }
-
-  function attachGutterAutoSize(textarea, gutter) {
-    if (!textarea || !gutter) return;
-    syncGutterHeight(textarea, gutter);
+  function attachEditorRailAutoSize(textarea, rail) {
+    if (!textarea || !rail) return;
+    syncEditorRailHeight(textarea, rail);
     if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(() => syncGutterHeight(textarea, gutter));
+      const ro = new ResizeObserver(() => {
+        syncEditorRailHeight(textarea, rail);
+        refreshEditorRail(textarea, rail);
+      });
       ro.observe(textarea);
     } else {
-      window.addEventListener('resize', () => syncGutterHeight(textarea, gutter));
+      window.addEventListener('resize', () => {
+        syncEditorRailHeight(textarea, rail);
+        refreshEditorRail(textarea, rail);
+      });
     }
   }
 
@@ -5266,11 +5352,14 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
   }
 
-  function attachEditorHeightSnap(textarea, gutter, highlight) {
+  function attachEditorHeightSnap(textarea, rail, highlight) {
     if (!textarea) return;
     const applySnap = () => {
       snapEditorHeightToLine(textarea);
-      if (gutter) syncGutterHeight(textarea, gutter);
+      if (rail) {
+        syncEditorRailHeight(textarea, rail);
+        refreshEditorRail(textarea, rail);
+      }
       if (highlight) syncHighlightScroll(textarea, highlight);
     };
     applySnap();
@@ -5282,8 +5371,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
   }
 
-  attachGutterAutoSize(shaderEditor, shaderGutter);
-  attachGutterAutoSize(functionEditor, functionGutter);
+  attachEditorRailEvents(shaderEditor, shaderGutter, shaderHighlight);
+  attachEditorRailEvents(functionEditor, functionGutter, functionHighlight);
+  attachEditorRailAutoSize(shaderEditor, shaderGutter);
+  attachEditorRailAutoSize(functionEditor, functionGutter);
   attachEditorHeightSnap(shaderEditor, shaderGutter, shaderHighlight);
   attachEditorHeightSnap(functionEditor, functionGutter, functionHighlight);
 
@@ -6278,7 +6369,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       functionEditor.disabled = true;
       updateFunctionStats('');
       renderDiagnosticsPanels();
-      renderLineNumbers(functionEditor, functionGutter);
+      clearEditorRailErrors(functionEditor, functionGutter);
       syncRustHighlight(functionEditor, functionHighlight);
       return;
     }
@@ -6286,7 +6377,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     functionEditor.value = fn.code;
     updateFunctionStats(fn.code);
     scheduleLiveDiagnostics();
-    renderLineNumbers(functionEditor, functionGutter);
+    clearEditorRailErrors(functionEditor, functionGutter);
     syncRustHighlight(functionEditor, functionHighlight);
   }
 
@@ -7496,7 +7587,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
       shaderEditor.disabled = true;
       updateShaderLines('');
       renderDiagnosticsPanels();
-      renderLineNumbers(shaderEditor, shaderGutter);
+      clearEditorRailErrors(shaderEditor, shaderGutter);
       syncRustHighlight(shaderEditor, shaderHighlight);
       return;
     }
@@ -7504,7 +7595,7 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     shaderEditor.value = shader.code;
     updateShaderLines(shader.code);
     scheduleLiveDiagnostics();
-    renderLineNumbers(shaderEditor, shaderGutter);
+    clearEditorRailErrors(shaderEditor, shaderGutter);
     syncRustHighlight(shaderEditor, shaderHighlight);
   }
 
@@ -8140,10 +8231,3 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     highlightEl.scrollLeft = textarea.scrollLeft;
   }
 
-  function syncGutterScroll(textarea, gutter) {
-    if (!textarea || !gutter) return;
-    const maxText = textarea.scrollHeight - textarea.clientHeight;
-    const maxGutter = gutter.scrollHeight - gutter.clientHeight;
-    const ratio = maxText > 0 ? textarea.scrollTop / maxText : 0;
-    gutter.scrollTop = ratio * maxGutter;
-  }
