@@ -3,6 +3,8 @@
     "Arbre.wgstudio",
     "DiffusionSimple.wgstudio",
     "Dive-PP.wgstudio",
+    "Dive-PP-Pluri-Tissues.wgstudio",
+    "Fluid.wgstudio",
     "GameOfLifeByJohnConway.wgstudio",
     "MarcheAlea.wgstudio",
     "MarcheAleaBIG-Loop.wgstudio",
@@ -10,6 +12,7 @@
     "PlasmaByTsoding.wgstudio",
     "PlasmaRectByTsoding.wgstudio",
     "Pluie.wgstudio",
+    "SimBubbles.wgstudio",
     "Sun.wgstudio"
   ]
 }
