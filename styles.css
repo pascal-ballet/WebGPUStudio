@@ -1445,11 +1445,13 @@ textarea {
   position: relative;
   min-width: 0;
   background: rgba(8, 13, 26, 0.92);
+  overflow: hidden;
 }
 
 .code-editor-layer .code-highlight {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
   margin: 0;
   padding: var(--code-padding);
   box-sizing: border-box;
@@ -1463,8 +1465,7 @@ textarea {
   word-break: normal;
   color: var(--rust-ident);
   pointer-events: none;
-  overflow: auto;
-  scrollbar-width: none;
+  overflow: visible;
   tab-size: 2;
 }
 

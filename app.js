@@ -8224,10 +8224,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 });
   function syncHighlightScroll(textarea, highlightEl) {
     if (!textarea || !highlightEl) return;
-    const maxText = textarea.scrollHeight - textarea.clientHeight;
-    const maxHighlight = highlightEl.scrollHeight - highlightEl.clientHeight;
-    const ratio = maxText > 0 ? textarea.scrollTop / maxText : 0;
-    highlightEl.scrollTop = ratio * maxHighlight;
-    highlightEl.scrollLeft = textarea.scrollLeft;
+    highlightEl.style.transform = `translateY(${-textarea.scrollTop}px) translateX(${-textarea.scrollLeft}px)`;
   }
 
