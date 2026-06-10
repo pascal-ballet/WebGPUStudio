@@ -300,12 +300,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   const deleteAccountBtn = document.getElementById('deleteAccountBtn');
   const googleSignInBtn = document.getElementById('googleSignInBtn');
 
+  const StudioCore = window.WebGPUStudio;
+  if (!StudioCore) {
+    throw new Error('webgpustudio.js doit etre charge avant app.js');
+  }
+
   let currentDevice = null;
   let currentAdapter = null;
   let currentAdapterInfo = null;
-  let computePipelines = [];
-  let bindingBuffers = new Map();
   let lastCompiledWGSL = '';
+  const simulationRuntime = new StudioCore.WebGPUSimulationRuntime({
+    log: (message, meta = '', loc = null) => logConsole(message, meta, loc),
+    onDeviceChange: ({ adapter, adapterInfo, device }) => {
+      currentAdapter = adapter || null;
+      currentAdapterInfo = adapterInfo || null;
+      currentDevice = device || null;
+    },
+  });
   let firebaseAuth = null;
   let firestoreDb = null;
   // Your web app's Firebase configuration
@@ -340,31 +351,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastRunUiUpdateAt = 0;
   updateButtons()
 
-  const MAX_SHADER_BUFFERS = 1000;
-  const UNIFORM_BINDINGS = {
-    step: 8,
-    mouseX: 9,
-    mouseY: 10,
-    mouseZ: 11,
-    mouseBtn: 12,
-    key: 13,
-  };
-  const USER_BINDING_OFFSET = UNIFORM_BINDINGS.key + 1;
-  const BUFFER_BINDING_OFFSET = USER_BINDING_OFFSET;
+  const MAX_SHADER_BUFFERS = StudioCore.MAX_SHADER_BUFFERS;
+  const UNIFORM_BINDINGS = StudioCore.UNIFORM_BINDINGS;
+  const USER_BINDING_OFFSET = StudioCore.USER_BINDING_OFFSET;
+  const BUFFER_BINDING_OFFSET = StudioCore.BUFFER_BINDING_OFFSET;
   const DEFAULT_PROJECT_NAME = 'Projet';
 
-  const getMaxStorageBindings = (device) => {
-    const maxPerBindGroup = device?.limits?.maxBindingsPerBindGroup;
-    const maxPerStage = device?.limits?.maxStorageBuffersPerShaderStage;
-    let limit = MAX_SHADER_BUFFERS;
-    if (Number.isFinite(maxPerBindGroup) && maxPerBindGroup > BUFFER_BINDING_OFFSET) {
-      limit = Math.min(limit, maxPerBindGroup - BUFFER_BINDING_OFFSET);
-    }
-    if (Number.isFinite(maxPerStage) && maxPerStage > 0) {
-      limit = Math.min(limit, maxPerStage);
-    }
-    return limit;
-  };
+  const getMaxStorageBindings = (device) => StudioCore.getMaxStorageBindings(device || currentDevice);
 
   const normalizeProjectName = (value) => {
     const name = typeof value === 'string' ? value.trim() : '';
@@ -420,26 +413,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastLiveWGSLMessages = [];
   let shaderIdsWithErrors = new Set();
   let functionIdsWithErrors = new Set();
-  let lintDevicePromise = null;
   let diagnosticsTimer = null;
   let liveDiagnosticsEnabled = false;
   let lastLiveWGSLCode = '';
-  let prep = null;
-  let bindingsDirty = true; // force regen des bind groups/read buffers quand besoin
-  let isSimulationRunning = false; // Empêche les appels concurrents à playSimulationStep
-  let bindingMetas = new Map();
-  let uniformBuffers = new Map();
-  let textureBuffers = new Map();
-  let dummyStorageBuffers = new Map();
-  let initialUploadDone = false;
   let simulationSteps = 0;
-  let stepBinding = UNIFORM_BINDINGS.step;
-  let mouseXBinding = UNIFORM_BINDINGS.mouseX;
-  let mouseYBinding = UNIFORM_BINDINGS.mouseY;
-  let mouseZBinding = UNIFORM_BINDINGS.mouseZ;
-  let keyBinding = UNIFORM_BINDINGS.key;
-  let mouseBtnBinding = UNIFORM_BINDINGS.mouseBtn;
-  let sharedPipelineLayout = null;
   let voxelRenderer = null;
   let previewValueCurrent = null;
   let valuesPanelOpen = false;
@@ -457,73 +434,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   let keyValue = 0;
   let mouseBtnValue = 0;
 
-  function normalizeTextureType(type) {
-    return type === 'uint' || type === 'float' || type === 'vec3f' || type === 'vec4f' ? type : 'int';
+  const normalizeTextureType = StudioCore.normalizeTextureType;
+  const isFloatTextureType = StudioCore.isFloatTextureType;
+  const getTextureComponentCount = StudioCore.getTextureComponentCount;
+  const getTextureStorageStrideCount = StudioCore.getTextureStorageStrideCount;
+  const getTextureScalarWGSL = StudioCore.getTextureScalarWGSL;
+  const normalizeVec3Value = StudioCore.normalizeVec3Value;
+  const normalizeVec4Value = StudioCore.normalizeVec4Value;
+
+  function getSimulationProject(device = currentDevice) {
+    return {
+      textures,
+      shaders,
+      functions: functionsStore,
+      parameters,
+      pipeline,
+      selectedShaderId,
+      t,
+      device,
+    };
   }
 
-  function isVec3Type(type) {
-    return normalizeTextureType(type) === 'vec3f';
+  function syncRuntimeState() {
+    currentAdapter = simulationRuntime.adapter || null;
+    currentAdapterInfo = simulationRuntime.adapterInfo || null;
+    currentDevice = simulationRuntime.device || null;
+    simulationSteps = simulationRuntime.stepCount;
   }
 
-  function isVec4Type(type) {
-    return normalizeTextureType(type) === 'vec4f';
-  }
-
-  function isFloatTextureType(type) {
-    const normalized = normalizeTextureType(type);
-    return normalized === 'float' || normalized === 'vec3f' || normalized === 'vec4f';
-  }
-
-  function getTextureComponentCount(type) {
-    if (isVec4Type(type)) return 4;
-    if (isVec3Type(type)) return 3;
-    return 1;
-  }
-
-  function getTextureStorageStrideCount(type) {
-    // WGSL storage layout pads vec3<f32> to 16 bytes (4 floats stride).
-    return isVec3Type(type) ? 4 : getTextureComponentCount(type);
-  }
-
-  function getTextureScalarWGSL(type) {
-    const normalized = normalizeTextureType(type);
-    if (normalized === 'float') return 'f32';
-    if (normalized === 'uint') return 'u32';
-    if (normalized === 'vec3f') return 'vec3<f32>';
-    if (normalized === 'vec4f') return 'vec4<f32>';
-    return 'i32';
-  }
-
-  function normalizeVec3Value(value) {
-    if (Array.isArray(value)) {
-      const out = [0, 0, 0];
-      for (let i = 0; i < 3; i += 1) out[i] = Number(value[i]) || 0;
-      return out;
-    }
-    if (value && typeof value === 'object') {
-      const out = [0, 0, 0];
-      const keys = ['x', 'y', 'z'];
-      for (let i = 0; i < 3; i += 1) out[i] = Number(value[keys[i]]) || 0;
-      return out;
-    }
-    const n = Number(value) || 0;
-    return [n, n, n];
-  }
-
-  function normalizeVec4Value(value) {
-    if (Array.isArray(value)) {
-      const out = [0, 0, 0, 0];
-      for (let i = 0; i < 4; i += 1) out[i] = Number(value[i]) || 0;
-      return out;
-    }
-    if (value && typeof value === 'object') {
-      const out = [0, 0, 0, 0];
-      const keys = ['x', 'y', 'z', 'w'];
-      for (let i = 0; i < 4; i += 1) out[i] = Number(value[keys[i]]) || 0;
-      return out;
-    }
-    const n = Number(value) || 0;
-    return [n, n, n, n];
+  function getSimulationStepCount() {
+    simulationSteps = simulationRuntime.stepCount;
+    return simulationSteps;
   }
 
   function getFraction01(value) {
@@ -940,7 +881,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function renderStepCounter() {
     if (!stepLabel) return;
-    const label = t('toolbar.step_counter', { count: simulationSteps }, `step = ${simulationSteps}`);
+    const stepCount = getSimulationStepCount();
+    const label = t('toolbar.step_counter', { count: stepCount }, `step = ${stepCount}`);
     stepLabel.textContent = label;
     if (fsStepLabel) fsStepLabel.textContent = label;
   }
@@ -957,7 +899,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     runIntervalMs = runUncapped ? 0 : Math.max(1, Math.round(1000 / s));
     if (runUncapped) {
       runSpeedMeasureT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-      runSpeedMeasureSteps0 = simulationSteps;
+      runSpeedMeasureSteps0 = getSimulationStepCount();
       runSpeedMeasured = 0;
     }
     runSpeedTargetLabel = runUncapped ? 'MAX' : `${s}/s`;
@@ -989,7 +931,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function resetRunSpeedMeasure() {
     runSpeedMeasureT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    runSpeedMeasureSteps0 = simulationSteps;
+    runSpeedMeasureSteps0 = getSimulationStepCount();
     lastRunUiUpdateAt = 0;
   }
 
@@ -998,26 +940,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof queueMicrotask === 'function') {
       queueMicrotask(() => {
         if (!runUncapped || !isRunning || isPaused) return;
-        if (!isSimulationRunning) playSimulationStep();
+        if (!simulationRuntime.isStepRunning) playSimulationStep();
       });
       return;
     }
     setTimeout(() => {
       if (!runUncapped || !isRunning || isPaused) return;
-      if (!isSimulationRunning) playSimulationStep();
+      if (!simulationRuntime.isStepRunning) playSimulationStep();
     }, 0);
   }
 
   function noteStepCompleted() {
     const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     const dt = Math.max(1, now - runSpeedMeasureT0);
-    const ds = simulationSteps - runSpeedMeasureSteps0;
+    const ds = getSimulationStepCount() - runSpeedMeasureSteps0;
     if (ds > 0) {
       runSpeedMeasured = (ds * 1000) / dt;
       updateMeasuredRunSpeedLabel();
       if (dt >= 250) {
         runSpeedMeasureT0 = now;
-        runSpeedMeasureSteps0 = simulationSteps;
+        runSpeedMeasureSteps0 = getSimulationStepCount();
       }
     }
   }
@@ -2150,25 +2092,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     webgpuProbePromise = (async () => {
-      const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-      if (!adapter) return;
-      currentAdapter = adapter;
-      if (!currentAdapterInfo) {
-        try {
-          if (typeof adapter.requestAdapterInfo === 'function') {
-            currentAdapterInfo = await adapter.requestAdapterInfo();
-          } else if (adapter.info) {
-            currentAdapterInfo = adapter.info;
-          }
-        } catch (e) {
-        }
-      }
-      if (!currentDevice) {
-        try {
-          currentDevice = await adapter.requestDevice();
-        } catch (e) {
-        }
-      }
+      await simulationRuntime.probeWebGPU();
+      syncRuntimeState();
     })();
 
     try {
@@ -2408,9 +2333,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const estimateBufferBytes = () => {
     let total = 0;
     try {
-      const uniformCount = uniformBuffers.size || 0;
+      const resources = simulationRuntime.getResourceStats();
+      const uniformCount = resources.uniformBuffers || 0;
       total += uniformCount * 4;
-      total += (dummyStorageBuffers.size || 0) * 4;
+      total += (resources.dummyStorageBuffers || 0) * 4;
     } catch (e) {
     }
     return total;
@@ -3436,64 +3362,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function updateStepCounterBuffer() {
-    if (!currentDevice) return;
-    const buf = uniformBuffers.get('step');
-    if (!buf) return;
-    const data = new Uint32Array([simulationSteps]);
-    currentDevice.queue.writeBuffer(
-      buf,
-      0,
-      data.buffer,
-      data.byteOffset,
-      data.byteLength,
-    );
+    simulationRuntime.updateStepCounterBuffer();
   }
 
   function updateMouseUniformBuffer() {
-    if (!currentDevice) return;
-    const bufX = uniformBuffers.get('mouseX');
-    const bufY = uniformBuffers.get('mouseY');
-    const bufZ = uniformBuffers.get('mouseZ');
-    if (bufX) {
-      const data = new Uint32Array([mouseXValue]);
-      currentDevice.queue.writeBuffer(bufX, 0, data.buffer, data.byteOffset, data.byteLength);
-    }
-    if (bufY) {
-      const data = new Uint32Array([mouseYValue]);
-      currentDevice.queue.writeBuffer(bufY, 0, data.buffer, data.byteOffset, data.byteLength);
-    }
-    if (bufZ) {
-      const data = new Uint32Array([mouseZValue]);
-      currentDevice.queue.writeBuffer(bufZ, 0, data.buffer, data.byteOffset, data.byteLength);
-    }
+    simulationRuntime.setMousePosition(mouseXValue, mouseYValue, mouseZValue);
   }
 
   function updateKeyUniformBuffer() {
-    if (!currentDevice) return;
-    const buf = uniformBuffers.get('key');
-    if (!buf) return;
-    const data = new Uint32Array([keyValue]);
-    currentDevice.queue.writeBuffer(
-      buf,
-      0,
-      data.buffer,
-      data.byteOffset,
-      data.byteLength,
-    );
+    simulationRuntime.setKey(keyValue);
   }
 
   function updateMouseBtnUniformBuffer() {
-    if (!currentDevice) return;
-    const buf = uniformBuffers.get('mouseBtn');
-    if (!buf) return;
-    const data = new Uint32Array([mouseBtnValue]);
-    currentDevice.queue.writeBuffer(
-      buf,
-      0,
-      data.buffer,
-      data.byteOffset,
-      data.byteLength,
-    );
+    simulationRuntime.setMouseButton(mouseBtnValue);
   }
 
   function keyEventToU32(e) {
@@ -3550,7 +3431,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     isRunning = false;
     isPaused = false;
     isCompiled = false;
-    simulationSteps = 0;
+    simulationRuntime.resetExecution();
+    syncRuntimeState();
     renderStepCounter();
     updateStepCounterBuffer();
     stopTimer();
@@ -3576,14 +3458,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function markBindingsDirty() {
-    bindingsDirty = true;
-    prep = null;
-    bindingMetas = new Map();
-    initialUploadDone = false;
-    uniformBuffers = new Map();
-    textureBuffers = new Map();
-    dummyStorageBuffers = new Map();
-    sharedPipelineLayout = null;
+    simulationRuntime.markBindingsDirty();
   }
 
   // Tabs switching
@@ -3617,20 +3492,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function validateWGSLSyntaxOnly(wgsl) {
-    const errors = [];
-    const fnMissingParen = /fn\s+[A-Za-z_][\w]*\s*{/.exec(wgsl);
-    if (fnMissingParen) {
-      errors.push('Une fonction semble manquer ses parenthèses : utilisez "fn nom()"');
-    }
-    let balance = 0;
-    wgsl.split('').forEach((ch) => {
-      if (ch === '{') balance += 1;
-      if (ch === '}') balance -= 1;
-    });
-    if (balance !== 0) {
-      errors.push('Accolades déséquilibrées dans le WGSL généré.');
-    }
-    return errors;
+    return StudioCore.validateWGSLSyntaxOnly(wgsl);
   }
 
   tabs.forEach((tab) => {
@@ -3764,20 +3626,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function resolveWGSLLocation(globalLoc, map) {
-    if (!globalLoc || !map || !Array.isArray(map.segments)) return null;
-    const line = Number(globalLoc.line) || 0;
-    const col = Number(globalLoc.col) || 1;
-    const seg = map.segments.find((s) => line >= s.startLine && line <= s.endLine);
-    if (!seg) return null;
-    return {
-      kind: seg.kind,
-      id: seg.id,
-      name: seg.name,
-      globalLine: line,
-      globalCol: col,
-      line: line - seg.startLine + 1,
-      col,
-    };
+    return StudioCore.resolveWGSLLocation(globalLoc, map);
   }
 
   function navigateToLocation(loc) {
@@ -3805,14 +3654,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function getLintDevice() {
-    if (lintDevicePromise) return lintDevicePromise;
-    lintDevicePromise = (async () => {
-      if (!navigator.gpu) return null;
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) return null;
-      return adapter.requestDevice();
-    })();
-    return lintDevicePromise;
+    return StudioCore.getLintDevice(navigator);
   }
 
   function scheduleLiveDiagnostics() {
@@ -3824,146 +3666,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function runLiveDiagnostics() {
-    const built = buildCombinedWGSLWithMap();
+    const result = await StudioCore.collectWGSLDiagnostics(getSimulationProject(), { navigator });
+    const built = result.built;
     lastLiveWGSLCode = built.code;
     lastLiveWGSLMap = built.map;
-
-    const staticErrors = validateWGSLSyntaxOnly(built.code);
-    const messages = [];
-    staticErrors.forEach((message) => {
-      messages.push({ type: 'error', message, lineNum: null, linePos: null });
-    });
-
-    try {
-      const device = await getLintDevice();
-      if (device) {
-        const module = device.createShaderModule({ code: built.code });
-        const info = typeof module.getCompilationInfo === 'function'
-          ? await module.getCompilationInfo()
-          : { messages: [] };
-        (info.messages || []).forEach((m) => {
-          messages.push(m);
-        });
-
-        const bindingOffset = USER_BINDING_OFFSET;
-        const primaryTextureName = textures[0]
-          ? sanitizedIdentifier(textures[0].name || 'Buffer1', 'Buffer1')
-          : null;
-        const primaryTextureType = textures[0]?.type || null;
-
-        const nonEmptyShaders = shaders
-          .filter((s) => (s?.code || '').trim().length > 0);
-
-        for (let i = 0; i < nonEmptyShaders.length; i += 1) {
-          const shader = nonEmptyShaders[i];
-          const selectedTextures = getShaderSelectedTextures(shader);
-          const primaryForShader = selectedTextures[0]
-            ? sanitizedIdentifier(selectedTextures[0].name || 'Buffer1', 'Buffer1')
-            : null;
-          const primaryTypeForShader = selectedTextures[0]?.type || null;
-          const builtSingle = buildSingleShaderWGSLWithMap(
-            shader,
-            bindingOffset,
-            primaryForShader,
-            primaryTypeForShader,
-          );
-          const singleModule = device.createShaderModule({ code: builtSingle.code });
-          const singleInfo = typeof singleModule.getCompilationInfo === 'function'
-            ? await singleModule.getCompilationInfo()
-            : { messages: [] };
-          (singleInfo.messages || []).forEach((m) => {
-            const globalLoc = (m.lineNum && m.linePos)
-              ? { line: m.lineNum, col: m.linePos }
-              : null;
-            const resolved = resolveWGSLLocation(globalLoc, builtSingle.map);
-            messages.push({
-              type: m.type || 'info',
-              message: m.message || String(m),
-              lineNum: m.lineNum,
-              linePos: m.linePos,
-              __resolvedOverride: resolved,
-            });
-          });
-        }
-
-        const nonEmptyFunctions = functionsStore
-          .filter((f) => (f?.code || '').trim().length > 0);
-
-        for (let i = 0; i < nonEmptyFunctions.length; i += 1) {
-          const fn = nonEmptyFunctions[i];
-          const selectedTextures = getShaderSelectedTextures(shaders.find((s) => s.id === selectedShaderId) || shaders[0]);
-          const primaryForShader = selectedTextures[0]
-            ? sanitizedIdentifier(selectedTextures[0].name || 'Buffer1', 'Buffer1')
-            : null;
-          const primaryTypeForShader = selectedTextures[0]?.type || null;
-          const builtFn = buildSingleFunctionWGSLWithMap(
-            fn,
-            bindingOffset,
-            primaryForShader,
-            primaryTypeForShader,
-          );
-          const fnModule = device.createShaderModule({ code: builtFn.code });
-          const fnInfo = typeof fnModule.getCompilationInfo === 'function'
-            ? await fnModule.getCompilationInfo()
-            : { messages: [] };
-          (fnInfo.messages || []).forEach((m) => {
-            const globalLoc = (m.lineNum && m.linePos)
-              ? { line: m.lineNum, col: m.linePos }
-              : null;
-            const resolved = resolveWGSLLocation(globalLoc, builtFn.map);
-            messages.push({
-              type: m.type || 'info',
-              message: m.message || String(m),
-              lineNum: m.lineNum,
-              linePos: m.linePos,
-              __resolvedOverride: resolved,
-            });
-          });
-        }
-      }
-    } catch (err) {
-      messages.push({ type: 'error', message: err?.message || String(err), lineNum: null, linePos: null });
-    }
-
-    const dedupe = new Set();
-    lastLiveWGSLMessages = messages
-      .filter(Boolean)
-      .map((m) => {
-        const globalLoc = (m.lineNum && m.linePos)
-          ? { line: m.lineNum, col: m.linePos }
-          : null;
-        const resolved = m.__resolvedOverride || resolveWGSLLocation(globalLoc, built.map);
-        return {
-          type: m.type || 'info',
-          message: m.message || String(m),
-          globalLoc,
-          resolved,
-        };
-      })
-      .filter((m) => {
-        const key = JSON.stringify(m.resolved
-          ? {
-            t: m.type,
-            msg: m.message,
-            k: m.resolved.kind || null,
-            id: m.resolved.id || null,
-            l: m.resolved.line || null,
-            c: m.resolved.col || null,
-          }
-          : {
-            t: m.type,
-            msg: m.message,
-            gl: m.globalLoc?.line || null,
-            gc: m.globalLoc?.col || null,
-          });
-        if (dedupe.has(key)) return false;
-        dedupe.add(key);
-        return true;
-      });
-
+    lastLiveWGSLMessages = result.messages;
     renderDiagnosticsPanels();
   }
-
   function renderDiagnosticsPanel(container, entries, kind) {
     if (!container) return;
     container.innerHTML = '';
@@ -4088,70 +3797,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) {
-        logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
-        isCompiled = false; updateButtons();
-        return;
+      const result = await simulationRuntime.compileProject(getSimulationProject());
+      syncRuntimeState();
+      if (result?.wgsl) lastCompiledWGSL = result.wgsl;
+      if (result?.map) lastWGSLMap = result.map;
+      isCompiled = Boolean(result?.ok);
+      if (isCompiled) {
+        markBindingsDirty();
       }
-      currentAdapter = adapter;
-      currentAdapterInfo = null;
-      try {
-        if (typeof adapter.requestAdapterInfo === 'function') {
-          currentAdapterInfo = await adapter.requestAdapterInfo();
-        } else if (adapter.info) {
-          currentAdapterInfo = adapter.info;
-        }
-      } catch (e) {
-      }
-      const device = await adapter.requestDevice();
-      currentDevice = device;
-
-      const flatSteps = expandPipeline(pipeline).filter((p) => (p.type || 'step') === 'step');
-      const shaderIds = Array.from(new Set(flatSteps.map((p) => p.shaderId).filter(Boolean)));
-      const shaderModules = new Map();
-      let hasErrors = false;
-
-      for (let i = 0; i < shaderIds.length; i += 1) {
-        const shader = shaders.find((s) => s.id === shaderIds[i]);
-        if (!shader) continue;
-        const selectedTextures = getShaderSelectedTextures(shader);
-        const primaryTextureName = selectedTextures[0]
-          ? sanitizedIdentifier(selectedTextures[0].name || 'Buffer1', 'Buffer1')
-          : null;
-        const primaryTextureType = selectedTextures[0]?.type || null;
-        const wgslForShader = buildSingleShaderWGSLWithMap(
-          shader,
-          USER_BINDING_OFFSET,
-          primaryTextureName,
-          primaryTextureType,
-        ).code;
-        const module = device.createShaderModule({ code: wgslForShader });
-        const info = typeof module.getCompilationInfo === 'function'
-          ? await module.getCompilationInfo()
-          : { messages: [] };
-        const hasShaderErrors = (info.messages || []).some((m) => m.type === 'error');
-        (info.messages || []).forEach((m) => {
-          if (m.type === 'error') {
-            logConsole(`Erreur WGSL (${shader.name}): ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
-          } else if (m.type === 'warning') {
-            logConsole(`Avertissement WGSL (${shader.name}): ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
-          }
-        });
-        if (hasShaderErrors) {
-          hasErrors = true;
-          continue;
-        }
-        shaderModules.set(shader.id, { module, shader });
-      }
-
-      if (hasErrors) {
-        isCompiled = false; updateButtons();
-        return;
-      }
-
-      buildComputePipelines(device, shaderModules);
-      markBindingsDirty(); // nouveau module/pipelines => regen bind group
+    } catch (err) {
+      logConsole(`Echec compilation WebGPU: ${err.message || err}`, 'compile');
+      isCompiled = false;
     } finally {
       isCompiling = false;
       updateButtons();
@@ -4379,7 +4035,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function startTimer() {
     resetRunSpeedMeasure();
     if (runUncapped) {
-      if (!isSimulationRunning) playSimulationStep();
+      if (!simulationRuntime.isStepRunning) playSimulationStep();
       return;
     }
     if (timerId === null) {
@@ -4406,65 +4062,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Wrapper pour une exécution complète (prépare + exécute)
   function playSimulationStep() {
-    if (isSimulationRunning) return;
-    isSimulationRunning = true;
-    const prepared = initPipelineExecution();
-    if (!prepared) {
-      isSimulationRunning = false;
-      return;
-    }
-    const { readTasks, dispatchList } = prepared;
-    updateStepCounterBuffer();
-    updateMouseUniformBuffer();
-    updateKeyUniformBuffer();
-    updateMouseBtnUniformBuffer();
-    const commandEncoder = currentDevice.createCommandEncoder();
-    const passEncoderCompute = commandEncoder.beginComputePass();
-    dispatchList.forEach((entry) => {
-      passEncoderCompute.setPipeline(entry.pipeline);
-      passEncoderCompute.setBindGroup(0, entry.bindGroup);
-      passEncoderCompute.dispatchWorkgroups(entry.x, entry.y, entry.z);
-    });
-    passEncoderCompute.end();
-
     const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     const shouldReadback = !runUncapped || (now - lastRunReadbackAt) >= runReadbackIntervalMs;
-    if (shouldReadback) {
-      lastRunReadbackAt = now;
-      readTasks.forEach((task) => {
-        commandEncoder.copyBufferToBuffer(task.src, 0, task.dst, 0, task.size);
-      });
+    if (shouldReadback) lastRunReadbackAt = now;
+    const started = simulationRuntime.step(getSimulationProject(), {
+      shouldReadback,
+      onComplete: ({ didReadback }) => {
+        syncRuntimeState();
+        if (!runUncapped) {
+          renderStepCounter();
+        } else {
+          const ts = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+          if ((ts - lastRunUiUpdateAt) >= runUiIntervalMs) {
+            lastRunUiUpdateAt = ts;
+            renderStepCounter();
+            updateMeasuredRunSpeedLabel();
+          }
+        }
+        noteStepCompleted();
+        if (didReadback) {
+          renderPreview();
+          renderTextureList();
+        }
+        if (runUncapped && isRunning && !isPaused) scheduleNextUncappedStep();
+      },
+    });
+    if (started) {
+      syncRuntimeState();
+      if (!runUncapped) renderStepCounter();
     }
-
-    currentDevice.queue.submit([commandEncoder.finish()]);
-    simulationSteps += 1;
-    if (!runUncapped) {
-      renderStepCounter();
-    } else {
-      const ts = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-      if ((ts - lastRunUiUpdateAt) >= runUiIntervalMs) {
-        lastRunUiUpdateAt = ts;
-        renderStepCounter();
-        updateMeasuredRunSpeedLabel();
-      }
-    }
-    updateStepCounterBuffer();
-    updateMouseUniformBuffer();
-    updateKeyUniformBuffer();
-    updateMouseBtnUniformBuffer();
-
-    if (!shouldReadback && runUncapped) {
-      currentDevice.queue.onSubmittedWorkDone()
-        .catch(() => {})
-        .finally(() => {
-          isSimulationRunning = false;
-          noteStepCompleted();
-          scheduleNextUncappedStep();
-        });
-      return;
-    }
-
-    handleReadbacks(shouldReadback ? readTasks : []);
   }
 
 
@@ -4612,252 +4238,6 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
 
 
 */
-
-
-
-
-
-
-
-
-  // ********************
-  // Pipeline
-  // ********************
-
-  function ensureUniformBuffers(device) {
-    if (!device) return;
-    const ensure = (key) => {
-      if (uniformBuffers.has(key)) return;
-      const buffer = device.createBuffer({
-        size: 4,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-      });
-      uniformBuffers.set(key, buffer);
-    };
-    ensure('step');
-    ensure('mouseX');
-    ensure('mouseY');
-    ensure('mouseZ');
-    ensure('mouseBtn');
-    ensure('key');
-  }
-
-  function ensureDummyStorageBuffer(device, binding) {
-    if (!device) return null;
-    if (dummyStorageBuffers.has(binding)) return dummyStorageBuffers.get(binding);
-    const buffer = device.createBuffer({
-      size: 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-    dummyStorageBuffers.set(binding, buffer);
-    return buffer;
-  }
-
-  function ensureTextureBuffer(device, tex) {
-    if (!device || !tex) return null;
-    const strideLanes = getTextureStorageStrideCount(tex.type);
-    const size = Math.max(4, (tex.size.x * tex.size.y * tex.size.z) * strideLanes * 4);
-    let entry = textureBuffers.get(tex.id);
-    if (!entry || entry.size !== size) {
-      if (entry?.buffer) {
-        try {
-          entry.buffer.destroy();
-        } catch (e) {
-        }
-      }
-      const buffer = device.createBuffer({
-        size,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-      });
-      entry = { buffer, size };
-      textureBuffers.set(tex.id, entry);
-    }
-    return entry;
-  }
-
-  function buildTextureReadTasks(device) {
-    const readTasks = [];
-    if (!device) return readTasks;
-    textures.forEach((tex) => {
-      const entry = ensureTextureBuffer(device, tex);
-      if (!entry) return;
-      const readBuffer = device.createBuffer({
-        size: entry.size,
-        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-      });
-      readTasks.push({ dst: readBuffer, src: entry.buffer, size: entry.size, tex });
-    });
-    return readTasks;
-  }
-
-  function buildBindGroupEntriesForShader(device, shader) {
-    const entries = [];
-    if (!device) return entries;
-    const selected = getShaderSelectedTextures(shader);
-    const bufferBindingOffset = BUFFER_BINDING_OFFSET;
-    const maxBindings = getMaxStorageBindings(device);
-    for (let i = 0; i < maxBindings; i += 1) {
-      const tex = selected[i] || null;
-      const binding = bufferBindingOffset + i;
-      if (tex) {
-        const entry = ensureTextureBuffer(device, tex);
-        if (entry) {
-          entries.push({ binding, resource: { buffer: entry.buffer } });
-        }
-      } else {
-        const dummy = ensureDummyStorageBuffer(device, binding);
-        if (dummy) entries.push({ binding, resource: { buffer: dummy } });
-      }
-    }
-
-    ensureUniformBuffers(device);
-    const uniformMap = {
-      step: UNIFORM_BINDINGS.step,
-      mouseX: UNIFORM_BINDINGS.mouseX,
-      mouseY: UNIFORM_BINDINGS.mouseY,
-      mouseZ: UNIFORM_BINDINGS.mouseZ,
-      mouseBtn: UNIFORM_BINDINGS.mouseBtn,
-      key: UNIFORM_BINDINGS.key,
-    };
-    Object.keys(uniformMap).forEach((key) => {
-      const buf = uniformBuffers.get(key);
-      if (buf) {
-        entries.push({ binding: uniformMap[key], resource: { buffer: buf } });
-      }
-    });
-    return entries;
-  }
-
-  // Prépare bind group + buffers + dispatchList
-  function initPipelineExecution() {
-    if (!bindingsDirty && prep) return prep;
-    bindingMetas = new Map();
-    if (!currentDevice) {
-      logConsole('Aucun device WebGPU initialisé. Compile d’abord.', 'run');
-      return null;
-    }
-    if (!computePipelines.length) {
-      logConsole('Aucun pipeline compute disponible. Compile d’abord.', 'run');
-      return null;
-    }
-    if (!validateLoopStructure(pipeline)) {
-      logConsole('Structure de boucle invalide : vérifiez vos Début/Fin.', 'run');
-      return null;
-    }
-    const readTasks = buildTextureReadTasks(currentDevice);
-    const dispatchList = expandPipeline(pipeline)
-      .map((pipe, idx) => {
-        if ((pipe.type || 'step') === 'step' && pipe.activated === false) {
-          return null;
-        }
-        const pipeEntry = computePipelines.find((p) => p.pipeId === pipe.id);
-        if (!pipeEntry) {
-          logConsole(`Pipeline ${idx + 1}: pipeline introuvable.`, 'run');
-          return null;
-        }
-        const shader = shaders.find((s) => s.id === pipeEntry.shaderId);
-        if (!shader) {
-          logConsole(`Pipeline ${idx + 1}: shader manquant pour bindings.`, 'run');
-          return null;
-        }
-        const layout = pipeEntry.pipeline.getBindGroupLayout(0);
-        if (!layout) {
-          logConsole(`Pipeline ${idx + 1}: layout introuvable pour le pipeline.`, 'run');
-          return null;
-        }
-        const entries = buildBindGroupEntriesForShader(currentDevice, shader);
-        if (!entries.length) {
-          logConsole(`Pipeline ${idx + 1}: aucune ressource à binder.`, 'run');
-          return null;
-        }
-        const bindGroup = currentDevice.createBindGroup({ layout, entries });
-        return {
-          pipeline: pipeEntry.pipeline,
-          bindGroup,
-          x: pipe.dispatch?.x || 1,
-          y: pipe.dispatch?.y || 1,
-          z: pipe.dispatch?.z || 1,
-        };
-      })
-      .filter(Boolean);
-    prep = { readTasks, dispatchList };
-    uploadInitialTextureBuffers();
-    bindingsDirty = false;
-    return prep;
-  }
-
-  // Lit les buffers GPU -> CPU et relâche le verrou quand tout est lu
-  function handleReadbacks(readTasks) {
-    let pending = readTasks.length;
-    if (!pending) {
-      isSimulationRunning = false;
-      const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-      const dt = Math.max(1, now - runSpeedMeasureT0);
-      const ds = simulationSteps - runSpeedMeasureSteps0;
-      if (ds > 0) {
-        runSpeedMeasured = (ds * 1000) / dt;
-        updateMeasuredRunSpeedLabel();
-        if (dt >= 250) {
-          runSpeedMeasureT0 = now;
-          runSpeedMeasureSteps0 = simulationSteps;
-        }
-      }
-      if (runUncapped && isRunning && !isPaused) scheduleNextUncappedStep();
-      return;
-    }
-    readTasks.forEach((task) => {
-      task.dst.mapAsync(GPUMapMode.READ)
-        .then(() => {
-          const range = task.dst.getMappedRange();
-          const copy = isFloatTextureType(task.tex.type)
-            ? new Float32Array(range.slice(0))
-            : (normalizeTextureType(task.tex.type) === 'uint'
-              ? new Uint32Array(range.slice(0))
-              : new Int32Array(range.slice(0)));
-          task.dst.unmap();
-          updateTextureValuesFromFlat(task.tex, copy);
-        })
-        .catch((mapErr) => {
-          logConsole(`Lecture buffer échouée: ${mapErr.message || mapErr}`, 'run');
-        })
-        .finally(() => {
-          pending -= 1;
-          if (pending === 0) {
-            renderPreview();
-            renderTextureList();
-            isSimulationRunning = false;
-            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-            const dt = Math.max(1, now - runSpeedMeasureT0);
-            const ds = simulationSteps - runSpeedMeasureSteps0;
-            if (ds > 0) {
-              runSpeedMeasured = (ds * 1000) / dt;
-              updateMeasuredRunSpeedLabel();
-              if (dt >= 250) {
-                runSpeedMeasureT0 = now;
-                runSpeedMeasureSteps0 = simulationSteps;
-              }
-            }
-            if (runUncapped && isRunning && !isPaused) scheduleNextUncappedStep();
-          }
-        });
-    });
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -5378,18 +4758,10 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   attachEditorHeightSnap(shaderEditor, shaderGutter, shaderHighlight);
   attachEditorHeightSnap(functionEditor, functionGutter, functionHighlight);
 
-  const getDefaultShaderBufferIds = () => textures.slice(0, getMaxStorageBindings(currentDevice)).map((t) => t.id);
+  const getDefaultShaderBufferIds = () => StudioCore.getDefaultShaderBufferIds(textures, currentDevice);
 
   const normalizeShaderBufferIds = (shader) => {
-    if (!shader) return [];
-    let ids = Array.isArray(shader.bufferIds) ? shader.bufferIds.filter(Boolean) : [];
-    const valid = new Set(textures.map((t) => t.id));
-    ids = ids.filter((id) => valid.has(id));
-    if (!ids.length && textures.length) ids = getDefaultShaderBufferIds();
-    const maxBindings = getMaxStorageBindings(currentDevice);
-    if (ids.length > maxBindings) ids = ids.slice(0, maxBindings);
-    shader.bufferIds = ids;
-    return ids;
+    return StudioCore.normalizeShaderBufferIds(shader, textures, currentDevice);
   };
 
   const normalizeAllShaderBufferIds = () => {
@@ -5397,36 +4769,15 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   };
 
   const getShaderSelectedTextures = (shader) => {
-    const ids = normalizeShaderBufferIds(shader);
-    if (!ids.length) return [];
-    const idSet = new Set(ids);
-    const selected = [];
-    textures.forEach((tex) => {
-      if (idSet.has(tex.id)) selected.push(tex);
-    });
-    return selected.slice(0, getMaxStorageBindings(currentDevice));
+    return StudioCore.getShaderSelectedTextures(shader, textures, currentDevice);
   };
 
   const buildBufferDeclarationsWGSLForTextures = (list, bindingOffset = BUFFER_BINDING_OFFSET) => {
-    return (list || [])
-      .map((tex, idx) => {
-        const name = sanitizedIdentifier(tex.name || `Buffer${idx + 1}`, `Buffer${idx + 1}`);
-        const scalar = getTextureScalarWGSL(tex.type);
-        const binding = bindingOffset + idx;
-        return `@group(0) @binding(${binding}) var<storage, read_write> ${name} : array<${scalar}>;`;
-      })
-      .join('\n');
+    return StudioCore.buildBufferDeclarationsWGSLForTextures(list, bindingOffset);
   };
 
   const buildUniformDeclarationsWGSL = () => {
-    return [
-      `@group(0) @binding(${UNIFORM_BINDINGS.step}) var<uniform> step : u32;`,
-      `@group(0) @binding(${UNIFORM_BINDINGS.mouseX}) var<uniform> mouseX : u32;`,
-      `@group(0) @binding(${UNIFORM_BINDINGS.mouseY}) var<uniform> mouseY : u32;`,
-      `@group(0) @binding(${UNIFORM_BINDINGS.mouseZ}) var<uniform> mouseZ : u32;`,
-      `@group(0) @binding(${UNIFORM_BINDINGS.mouseBtn}) var<uniform> mouseBtn : u32;`,
-      `@group(0) @binding(${UNIFORM_BINDINGS.key}) var<uniform> key : u32; // VK codes`,
-    ].join('\n');
+    return StudioCore.buildUniformDeclarationsWGSL();
   };
 
   const updateShaderBindingsEditor = (shader) => {
@@ -5566,88 +4917,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     renderForm(tex);
   }
 
-  function coerceTextureValue(value, type) {
-    const normalized = normalizeTextureType(type);
-    if (normalized === 'vec3f') return normalizeVec3Value(value);
-    if (normalized === 'vec4f') return normalizeVec4Value(value);
-    if (normalized === 'float') {
-      const n = Number(value);
-      return Number.isFinite(n) ? n : 0;
-    }
-    if (normalized === 'uint') return (Number(value) || 0) >>> 0;
-    return (Number(value) || 0) | 0;
-  }
-
-  function regenerateValues(tex) {
-    const { x, y, z } = tex.size;
-    tex.values = [];
-    for (let k = 0; k < z; k += 1) {
-      const layer = [];
-      for (let j = 0; j < y; j += 1) {
-        const row = [];
-        for (let i = 0; i < x; i += 1) {
-          row.push(generateValue(tex));
-        }
-        layer.push(row);
-      }
-      tex.values.push(layer);
-    }
-  }
-
-  function ensureValueShape(tex) {
-    const { x, y, z } = tex.size;
-    if (!tex.values) tex.values = [];
-    tex.values.length = z;
-    for (let k = 0; k < z; k += 1) {
-      if (!tex.values[k]) tex.values[k] = [];
-      tex.values[k].length = y;
-      for (let j = 0; j < y; j += 1) {
-        if (!tex.values[k][j]) tex.values[k][j] = [];
-        tex.values[k][j].length = x;
-        for (let i = 0; i < x; i += 1) {
-          if (tex.values[k][j][i] === undefined) {
-            tex.values[k][j][i] = generateValue(tex);
-          } else {
-            tex.values[k][j][i] = coerceTextureValue(tex.values[k][j][i], tex.type);
-          }
-        }
-      }
-    }
-  }
-
-  function generateValue(tex) {
-    const type = normalizeTextureType(tex.type);
-    if (type === 'vec3f') {
-      if (tex.fill === 'empty') return [0, 0, 0];
-      return [
-        Number(Math.random().toFixed(3)),
-        Number(Math.random().toFixed(3)),
-        Number(Math.random().toFixed(3)),
-      ];
-    }
-    if (type === 'vec4f') {
-      if (tex.fill === 'empty') return [0, 0, 0, 0];
-      return [
-        Number(Math.random().toFixed(3)),
-        Number(Math.random().toFixed(3)),
-        Number(Math.random().toFixed(3)),
-        Number(Math.random().toFixed(3)),
-      ];
-    }
-    if (tex.fill === 'empty') return 0;
-    if (type === 'float') {
-      const val = Math.random();
-      return Number(val.toFixed(3));
-    }
-    // Génère un entier 32 bits (signé ou non signé selon type)
-    const r = (Math.random() * 0x100000000) >>> 0; // 0 .. 2^32-1
-    return type === 'uint' ? r >>> 0 : (r | 0);
-  }
-
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
-
+  const coerceTextureValue = StudioCore.coerceTextureValue;
+  const regenerateValues = StudioCore.regenerateValues;
+  const ensureValueShape = StudioCore.ensureValueShape;
+  const generateValue = StudioCore.generateValue;
+  const clamp = StudioCore.clamp;
   function uniqueTextureName(base) {
     const existing = new Set(textures.map((t) => t.name.toLowerCase()));
     const lower = base.toLowerCase();
@@ -5692,36 +4966,11 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function validateLoopStructure(list, allowOpen = false) {
-    const stack = [];
-    for (let i = 0; i < list.length; i += 1) {
-      const item = list[i];
-      if (item.type === 'loopStart') {
-        stack.push(item);
-      } else if (item.type === 'loopEnd') {
-        if (!stack.length) return false;
-        stack.pop();
-      }
-    }
-    return allowOpen ? true : stack.length === 0;
+    return StudioCore.validateLoopStructure(list, allowOpen);
   }
 
   function expandPipeline(list) {
-    if (!Array.isArray(list)) return [];
-    const stack = [{ items: [] }];
-    list.forEach((item) => {
-      if (item.type === 'loopStart') {
-        stack.push({ repeat: Math.max(1, parseInt(item.repeat, 10) || 1), items: [] });
-      } else if (item.type === 'loopEnd') {
-        if (stack.length <= 1) return;
-        const { repeat, items } = stack.pop();
-        for (let i = 0; i < repeat; i += 1) {
-          stack[stack.length - 1].items.push(...items);
-        }
-      } else {
-        stack[stack.length - 1].items.push(item);
-      }
-    });
-    return stack.length === 1 ? stack[0].items : [];
+    return StudioCore.expandPipeline(list);
   }
 
   function renderPipelineShaderList() {
@@ -5935,53 +5184,17 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
     return String(rounded);
   }
 
-  function formatParameterValueForWGSL(value) {
-    if (!Number.isFinite(value)) return null;
-    if (Number.isInteger(value)) return String(value);
-    const text = String(value);
-    if (/[.eE]/.test(text)) return text;
-    return `${text}.0`;
-  }
+  const formatParameterValueForWGSL = StudioCore.formatParameterValueForWGSL;
 
   function buildParameterNameMap(evaluation) {
-    const map = new Map();
-    parameters.forEach((param) => {
-      const name = (param.name || '').trim();
-      if (!name) return;
-      if (evaluation.errors.has(param.id)) return;
-      map.set(name.toLowerCase(), param.id);
-    });
-    return map;
+    return StudioCore.buildParameterNameMap(parameters, evaluation);
   }
 
-  function resolveSizeInput(rawValue, fallback, evaluation, nameMap) {
-    const text = String(rawValue ?? '').trim();
-    if (!text) return fallback;
-    const numeric = Number(text);
-    if (Number.isFinite(numeric)) return Math.floor(numeric);
-    const id = nameMap?.get(text.toLowerCase());
-    if (!id) return fallback;
-    const resolved = evaluation.values.get(id);
-    if (!Number.isFinite(resolved)) return fallback;
-    return Math.floor(resolved);
-  }
+  const resolveSizeInput = StudioCore.resolveSizeInput;
 
   function buildParameterConstWGSL() {
-    if (!parameters.length) return '';
-    const evaluation = getParameterEvaluation();
-    const lines = [];
-    parameters.forEach((param) => {
-      const name = (param.name || '').trim();
-      if (!name) return;
-      if (evaluation.errors.has(param.id)) return;
-      const value = evaluation.values.get(param.id);
-      const literal = formatParameterValueForWGSL(value);
-      if (literal === null) return;
-      lines.push(`const ${name} = ${literal};`);
-    });
-    return lines.join('\n');
+    return StudioCore.buildParameterConstWGSL(parameters, { t });
   }
-
   function updateTextureSizesFromParameters(evaluation) {
     if (!textures.length) return;
     const nameMap = buildParameterNameMap(evaluation);
@@ -6045,106 +5258,8 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function getParameterEvaluation() {
-    const values = new Map();
-    const errors = new Map();
-    const byName = new Map();
-    const duplicates = new Set();
-    const byId = new Map(parameters.map((p) => [p.id, p]));
-    const normalizeName = (name) => (name || '').trim();
-
-    parameters.forEach((param) => {
-      const name = normalizeName(param.name);
-      if (!name) return;
-      const key = name.toLowerCase();
-      if (byName.has(key)) {
-        duplicates.add(key);
-      } else {
-        byName.set(key, param.id);
-      }
-    });
-
-    parameters.forEach((param) => {
-      const name = normalizeName(param.name);
-      if (!name) {
-        errors.set(param.id, t('parameters.errors.empty_name', null, 'Nom requis.'));
-        return;
-      }
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-        errors.set(param.id, t('parameters.errors.invalid_name', null, 'Nom invalide.'));
-        return;
-      }
-      if (duplicates.has(name.toLowerCase())) {
-        errors.set(param.id, t('parameters.errors.duplicate', null, 'Nom déjà utilisé.'));
-      }
-    });
-
-    const getParamId = (token) => byName.get(token.toLowerCase());
-
-    const evalParam = (param, stack) => {
-      if (!param || errors.has(param.id) || values.has(param.id)) return;
-      if (stack.has(param.id)) {
-        errors.set(param.id, t('parameters.errors.cycle', null, 'Dépendance circulaire détectée.'));
-        return;
-      }
-      const exprRaw = String(param.expr ?? '').trim();
-      if (!exprRaw) {
-        errors.set(param.id, t('parameters.errors.empty_expr', null, 'Expression requise.'));
-        return;
-      }
-      const tokens = exprRaw.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
-      stack.add(param.id);
-      for (const token of tokens) {
-        const depId = getParamId(token);
-        if (!depId) {
-          errors.set(param.id, t('parameters.errors.unknown', { name: token }, `Paramètre inconnu : ${token}.`));
-          stack.delete(param.id);
-          return;
-        }
-        if (depId === param.id) {
-          errors.set(param.id, t('parameters.errors.cycle', null, 'Dépendance circulaire détectée.'));
-          stack.delete(param.id);
-          return;
-        }
-        const depParam = byId.get(depId);
-        evalParam(depParam, stack);
-        if (errors.has(depId)) {
-          errors.set(param.id, t('parameters.errors.dependency', null, 'Dépendance invalide.'));
-          stack.delete(param.id);
-          return;
-        }
-      }
-      stack.delete(param.id);
-      if (errors.has(param.id)) return;
-      const safeExpr = exprRaw.replace(/[A-Za-z_][A-Za-z0-9_]*/g, (token) => {
-        const depId = getParamId(token);
-        const depValue = values.get(depId);
-        return Number.isFinite(depValue) ? String(depValue) : '0';
-      });
-      if (/[^0-9+\-*/().\s]/.test(safeExpr)) {
-        errors.set(param.id, t('parameters.errors.invalid', null, 'Expression invalide.'));
-        return;
-      }
-      let result;
-      try {
-        result = Function(`"use strict"; return (${safeExpr});`)();
-      } catch (e) {
-        errors.set(param.id, t('parameters.errors.invalid', null, 'Expression invalide.'));
-        return;
-      }
-      if (!Number.isFinite(result)) {
-        errors.set(param.id, t('parameters.errors.not_finite', null, 'Résultat non fini.'));
-        return;
-      }
-      values.set(param.id, Number(result));
-    };
-
-    parameters.forEach((param) => {
-      evalParam(param, new Set());
-    });
-
-    return { values, errors };
+    return StudioCore.evaluateParameters(parameters, { t });
   }
-
   function renderParameterList(evaluation) {
     if (!parameterList) return;
     const { values, errors } = evaluation;
@@ -6401,27 +5516,19 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function sanitizeEntryName(name) {
-    return (name || 'main').replace(/[^A-Za-z0-9_]/g, '') || 'main';
+    return StudioCore.sanitizeEntryName(name);
   }
 
   function enforceEntryName(code, entryName) {
-    const fnRegex = /(fn\s+)([A-Za-z_][\w]*)/m;
-    if (!fnRegex.test(code)) return code;
-    return code.replace(fnRegex, `$1${entryName}`);
+    return StudioCore.enforceEntryName(code, entryName);
   }
 
   function adjustLiteralsForTarget(code, isFloatTarget) {
-    if (isFloatTarget) return code;
-    return code.replace(/(\d+)\.0\b/g, '$1').replace(/(\d+\.\d+)/g, (match) => {
-      const asInt = parseInt(match, 10);
-      return Number.isNaN(asInt) ? match : `${asInt}`;
-    });
+    return StudioCore.adjustLiteralsForTarget(code, isFloatTarget);
   }
 
   function sanitizedIdentifier(name, fallback = 'identifier') {
-    const trimmed = (name || fallback).replace(/[^A-Za-z0-9_]/g, '');
-    if (/^[A-Za-z_]/.test(trimmed)) return trimmed || fallback;
-    return `_${trimmed || fallback}`;
+    return StudioCore.sanitizedIdentifier(name, fallback);
   }
 
   function logConsole(message, meta = '', loc = null) {
@@ -6493,857 +5600,102 @@ fn Compute3(@builtin(global_invocation_id) gid : vec3<u32>) {
   }
 
   function buildShaderSectionWithMap(bindingOffset, primaryTextureName, primaryTextureType) {
-    const declSeen = new Set();
-    const segments = [];
-    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
-    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
-
-    let currentLine = 1;
-    let code = '';
-
-    const append = (txt) => {
-      const t = normalizeNewlines(txt);
-      code += t;
-      currentLine += countNewlines(t);
-    };
-
-    const nonEmptyShaders = shaders
-      .map((s) => ({ s, code: normalizeNewlines(normalizeComputeCode(
-        s.code,
-        bindingOffset,
-        declSeen,
-        primaryTextureName,
-        primaryTextureType,
-      )) }))
-      .filter((x) => (x.code || '').trim().length > 0);
-
-    nonEmptyShaders.forEach(({ s, code: shaderCode }, idx) => {
-      const startLine = currentLine;
-      const linesCount = shaderCode.split('\n').length;
-      const endLine = startLine + linesCount - 1;
-      segments.push({ kind: 'shader', id: s.id, name: s.name, startLine, endLine });
-      append(shaderCode);
-      if (idx < nonEmptyShaders.length - 1) {
-        append('\n\n');
-      }
-    });
-
-    return { code, segments };
+    return StudioCore.buildShaderSectionWithMap(
+      getSimulationProject(),
+      bindingOffset,
+      primaryTextureName,
+      primaryTextureType,
+    );
   }
 
   function buildCombinedWGSLWithMap() {
-    const segments = [];
-    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
-    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
-
-    let currentLine = 1;
-    let code = '';
-
-    const append = (txt) => {
-      const t = normalizeNewlines(txt);
-      code += t;
-      currentLine += countNewlines(t);
-    };
-
-    const pushSegment = (kind, id, name, txt) => {
-      const t = normalizeNewlines(txt);
-      if (!t.trim()) return;
-      const startLine = currentLine;
-      const linesCount = t.split('\n').length;
-      const endLine = startLine + linesCount - 1;
-      segments.push({ kind, id, name, startLine, endLine });
-      append(t);
-    };
-
-    append('// --- Paramètres ---\n');
-    const parametersSection = buildParameterConstWGSL();
-    if ((parametersSection || '').trim()) {
-      pushSegment('system', 'parameters', 'parameters', parametersSection);
-      append('\n\n');
-    } else {
-      append(`// (${t('wgsl.none_parameters', null, 'aucun paramètre')})\n\n`);
-    }
-
-    append('// --- Fonctions ---\n');
-    if (functionsStore.length) {
-      const nonEmpty = functionsStore.filter((f) => (f.code || '').trim().length > 0);
-      if (nonEmpty.length) {
-        nonEmpty.forEach((f, idx) => {
-          pushSegment('function', f.id, f.name, f.code || '');
-          if (idx < nonEmpty.length - 1) append('\n\n');
-        });
-        append('\n\n');
-      } else {
-        append(`// (${t('wgsl.none_function', null, 'aucune fonction')})\n\n`);
-      }
-    } else {
-      append(`// (${t('wgsl.none_function', null, 'aucune fonction')})\n\n`);
-    }
-
-    append('// --- Buffers ---\n');
-    const textureSection = buildTextureDeclarationsWGSL();
-    if ((textureSection || '').trim()) {
-      pushSegment('system', 'textures', 'textures', textureSection);
-      append('\n\n');
-    } else {
-      append(`// (${t('wgsl.none_texture', null, 'aucune texture')})\n\n`);
-    }
-
-    append('// --- Uniforms ---\n');
-
-    const bindingOffset = USER_BINDING_OFFSET;
-    const primaryTextureName = textures[0]
-      ? sanitizedIdentifier(textures[0].name || 'Buffer1', 'Buffer1')
-      : null;
-    const primaryTextureType = textures[0]?.type || null;
-
-    const shaderSectionBuilt = buildShaderSectionWithMap(bindingOffset, primaryTextureName, primaryTextureType);
-    const stepSection = buildStepDeclarationWGSL();
-    pushSegment('system', 'step', 'system', stepSection);
-    append('\n\n');
-
-    append('// --- Compute Shaders ---\n');
-    if ((shaderSectionBuilt.code || '').trim()) {
-      const shaderStartLine = currentLine;
-      append(shaderSectionBuilt.code);
-      shaderSectionBuilt.segments.forEach((seg) => {
-        segments.push({
-          ...seg,
-          startLine: seg.startLine + shaderStartLine - 1,
-          endLine: seg.endLine + shaderStartLine - 1,
-        });
-      });
-    } else {
-      append('// (aucun compute shader)');
-    }
-
-    return { code, map: { segments } };
+    return StudioCore.buildCombinedWGSLWithMap(getSimulationProject());
   }
 
   function buildSingleShaderWGSLWithMap(shader, bindingOffset, primaryTextureName, primaryTextureType) {
-    const segments = [];
-    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
-    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
-
-    let currentLine = 1;
-    let code = '';
-
-    const append = (txt) => {
-      const t = normalizeNewlines(txt);
-      code += t;
-      currentLine += countNewlines(t);
-    };
-
-    const pushSegment = (kind, id, name, txt) => {
-      const t = normalizeNewlines(txt);
-      if (!t.trim()) return;
-      const startLine = currentLine;
-      const linesCount = t.split('\n').length;
-      const endLine = startLine + linesCount - 1;
-      segments.push({ kind, id, name, startLine, endLine });
-      append(t);
-    };
-
-    append('// --- Paramètres ---\n');
-    const parametersSection = buildParameterConstWGSL();
-    if ((parametersSection || '').trim()) {
-      pushSegment('system', 'parameters', 'parameters', parametersSection);
-      append('\n\n');
-    } else {
-      append(`// (${t('wgsl.none_parameters', null, 'aucun paramètre')})\n\n`);
-    }
-
-    append('// --- Textures ---\n');
-    const selectedTextures = getShaderSelectedTextures(shader);
-    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures, bindingOffset);
-    if ((textureSection || '').trim()) {
-      pushSegment('system', 'textures', 'textures', textureSection);
-      append('\n\n');
-    } else {
-      append(`// (${t('wgsl.none_texture', null, 'aucune texture')})\n\n`);
-    }
-
-    append('// --- Système ---\n');
-    const declSeen = new Set();
-    const shaderCode = normalizeComputeCode(
-      shader?.code || '',
+    return StudioCore.buildSingleShaderWGSLWithMap(
+      getSimulationProject(),
+      shader,
       bindingOffset,
-      declSeen,
       primaryTextureName,
       primaryTextureType,
     );
-    const stepSection = buildStepDeclarationWGSL();
-    pushSegment('system', 'step', 'system', stepSection);
-    append('\n\n');
-
-    append('// --- Compute Shaders ---\n');
-    if ((shaderCode || '').trim()) {
-      pushSegment('shader', shader?.id, shader?.name, shaderCode);
-      append('\n\n');
-    } else {
-      append('// (aucun compute shader)');
-      append('\n\n');
-    }
-
-    append('// --- Fonctions ---\n');
-    if (functionsStore.length) {
-      const nonEmpty = functionsStore.filter((f) => (f.code || '').trim().length > 0);
-      if (nonEmpty.length) {
-        nonEmpty.forEach((f, idx) => {
-          pushSegment('function', f.id, f.name, f.code || '');
-          if (idx < nonEmpty.length - 1) append('\n\n');
-        });
-      } else {
-        append(`// (${t('wgsl.none_function', null, 'aucune fonction')})`);
-      }
-    } else {
-      append(`// (${t('wgsl.none_function', null, 'aucune fonction')})`);
-    }
-
-    return { code, map: { segments } };
   }
 
   function buildSingleFunctionWGSLWithMap(fn, bindingOffset, primaryTextureName, primaryTextureType) {
-    const segments = [];
-    const normalizeNewlines = (txt) => (txt || '').replace(/\r\n/g, '\n');
-    const countNewlines = (txt) => (normalizeNewlines(txt).match(/\n/g) || []).length;
-
-    let currentLine = 1;
-    let code = '';
-
-    const append = (txt) => {
-      const t = normalizeNewlines(txt);
-      code += t;
-      currentLine += countNewlines(t);
-    };
-
-    const pushSegment = (kind, id, name, txt) => {
-      const t = normalizeNewlines(txt);
-      if (!t.trim()) return;
-      const startLine = currentLine;
-      const linesCount = t.split('\n').length;
-      const endLine = startLine + linesCount - 1;
-      segments.push({ kind, id, name, startLine, endLine });
-      append(t);
-    };
-
-    append('// --- Paramètres ---\n');
-    const parametersSection = buildParameterConstWGSL();
-    if ((parametersSection || '').trim()) {
-      pushSegment('system', 'parameters', 'parameters', parametersSection);
-      append('\n\n');
-    } else {
-      append(`// (${t('wgsl.none_parameters', null, 'aucun paramètre')})\n\n`);
-    }
-
-    append('// --- Textures ---\n');
-    const baseShader = shaders.find((s) => s.id === selectedShaderId) || shaders[0] || null;
-    const selectedTextures = getShaderSelectedTextures(baseShader);
-    const textureSection = buildBufferDeclarationsWGSLForTextures(selectedTextures, bindingOffset);
-    if ((textureSection || '').trim()) {
-      pushSegment('system', 'textures', 'textures', textureSection);
-      append('\n\n');
-    } else {
-      append(`// (${t('wgsl.none_texture', null, 'aucune texture')})\n\n`);
-    }
-
-    append('// --- Système ---\n');
-    const declSeen = new Set();
-    normalizeComputeCode(
-      '',
+    return StudioCore.buildSingleFunctionWGSLWithMap(
+      getSimulationProject(),
+      fn,
       bindingOffset,
-      declSeen,
       primaryTextureName,
       primaryTextureType,
     );
-    const stepSection = buildStepDeclarationWGSL();
-    pushSegment('system', 'step', 'system', stepSection);
-    append('\n\n');
-
-    append('// --- Fonctions ---\n');
-    const allFns = functionsStore.filter((f) => (f?.code || '').trim().length > 0);
-    const first = fn ? allFns.find((f) => f.id === fn.id) : null;
-    if (first) {
-      pushSegment('function', first.id, first.name, first.code || '');
-      if (allFns.length > 1) append('\n\n');
-      allFns.forEach((f) => {
-        if (f.id === first.id) return;
-        pushSegment('function', f.id, f.name, f.code || '');
-        append('\n\n');
-      });
-    } else if (allFns.length) {
-      allFns.forEach((f, idx) => {
-        pushSegment('function', f.id, f.name, f.code || '');
-        if (idx < allFns.length - 1) append('\n\n');
-      });
-    } else {
-      append(`// (${t('wgsl.none_function', null, 'aucune fonction')})`);
-    }
-
-    return { code, map: { segments } };
   }
 
   function buildCombinedWGSL() {
-    return buildCombinedWGSLWithMap().code;
+    return StudioCore.buildCombinedWGSL(getSimulationProject());
   }
 
   function buildTextureDeclarationsWGSL() {
-    return buildBufferDeclarationsWGSLForTextures(textures.slice(0, getMaxStorageBindings(currentDevice)), BUFFER_BINDING_OFFSET);
+    return StudioCore.buildBufferDeclarationsWGSLForTextures(
+      textures.slice(0, getMaxStorageBindings(currentDevice)),
+      BUFFER_BINDING_OFFSET,
+    );
   }
 
   function buildShaderSection(bindingOffset, primaryTextureName, primaryTextureType) {
-    const declSeen = new Set();
-    return shaders
-      .map((s) => normalizeComputeCode(
-        s.code,
-        bindingOffset,
-        declSeen,
-        primaryTextureName,
-        primaryTextureType,
-      ))
-      .filter(Boolean)
-      .join('\n\n');
+    return buildShaderSectionWithMap(bindingOffset, primaryTextureName, primaryTextureType).code;
   }
 
   function buildStepDeclarationWGSL() {
-    return buildUniformDeclarationsWGSL();
+    return StudioCore.buildUniformDeclarationsWGSL();
   }
 
   function updateTextureDeclarationsEditor() {
     if (!texturesEditor) return;
-    texturesEditor.value = buildUniformDeclarationsWGSL();
+    texturesEditor.value = buildStepDeclarationWGSL();
   }
 
   function normalizeComputeCode(code, bindingOffset, declSeen, primaryTextureName, primaryTextureType) {
-    if (!code) return '';
-    const lines = code.split('\n');
-    const normalized = [];
-    const bindingRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<[^>]+>\s*([A-Za-z_][\w]*)/;
-    let replacedVar = null;
-    lines.forEach((line) => {
-      const match = line.match(bindingRegex);
-      if (match) {
-        const originalBinding = parseInt(match[1], 10) || 0;
-        const varName = match[2];
-        // Si une texture primaire existe, on fait travailler le compute dessus et on supprime la déclaration locale
-        if (primaryTextureName && replacedVar === null) {
-          replacedVar = varName;
-          normalized.push('');
-          return;
-        }
-        const newBinding = bindingOffset + originalBinding;
-        const replaced = line.replace(
-          /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*\d+\s*\)/,
-          `@group(0) @binding(${newBinding})`,
-        );
-        const key = replaced.replace(/\s+/g, ' ').trim();
-        if (!declSeen.has(key)) {
-          declSeen.add(key);
-          normalized.push(replaced);
-        } else {
-          normalized.push('');
-        }
-        return;
-      }
-      normalized.push(line);
-    });
-    let output = normalized.join('\n');
-    if (replacedVar && primaryTextureName) {
-      const varRegex = new RegExp(`\\b${replacedVar}\\b`, 'g');
-      output = output.replace(varRegex, primaryTextureName);
-      output = adjustLiteralsForTarget(output, primaryTextureType === 'float');
-    }
-    return output;
+    return StudioCore.normalizeComputeCode(
+      code,
+      bindingOffset,
+      declSeen,
+      primaryTextureName,
+      primaryTextureType,
+    );
   }
 
   function validateWGSL(wgsl) {
-    const errors = [];
-    const fnMissingParen = /fn\s+[A-Za-z_][\w]*\s*{/.exec(wgsl);
-    if (fnMissingParen) {
-      errors.push('Une fonction semble manquer ses parenthèses : utilisez "fn nom()"');
-      isCompiled = false;
-    }
-    let balance = 0;
-    wgsl.split('').forEach((ch) => {
-      if (ch === '{') balance += 1;
-      if (ch === '}') balance -= 1;
-    });
-    if (balance !== 0) {
-      errors.push('Accolades déséquilibrées dans le WGSL généré.');
-      isCompiled = false;
-    }
+    const errors = StudioCore.validateWGSLSyntaxOnly(wgsl);
+    if (errors.length) isCompiled = false;
     updateButtons();
     return errors;
   }
 
-  async function compileWGSL(wgsl) {
-    if (!navigator.gpu) {
-      logConsole('WebGPU non supporté dans ce navigateur.', 'compile');
-      isCompiled = false; updateButtons();
-      return null;
-    }
-    try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) {
-        logConsole('Impossible d’obtenir un adaptateur WebGPU.', 'compile');
-        isCompiled = false; updateButtons();
-        return null;
-      }
-      currentAdapter = adapter;
-      currentAdapterInfo = null;
-      try {
-        if (typeof adapter.requestAdapterInfo === 'function') {
-          currentAdapterInfo = await adapter.requestAdapterInfo();
-        } else if (adapter.info) {
-          currentAdapterInfo = adapter.info;
-        }
-      } catch (e) {
-      }
-      const device = await adapter.requestDevice();
-      const module = device.createShaderModule({ code: wgsl });
-      const info = typeof module.getCompilationInfo === 'function'
-        ? await module.getCompilationInfo()
-        : { messages: [] };
-      if (info.messages.some((m) => m.type === 'error')) {
-        info.messages.forEach((m) => {
-          if (m.type === 'error') {
-            logConsole(`Erreur WGSL: ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
-          } else if (m.type === 'warning') {
-            logConsole(`Avertissement WGSL: ${m.message}`, 'compile', { line: m.lineNum, col: m.linePos });
-          }
-        });
-        isCompiled = false; updateButtons();
-        return null;
-      }
-      logConsole('Compilation WGSL WebGPU : OK.', 'compile');
-      isCompiled = true; updateButtons();
-      currentDevice = device;
-      return { device, module };
-    } catch (err) {
-      logConsole(`Échec compilation WebGPU: ${err.message || err}`, 'compile');
-      isCompiled = false; updateButtons();
-      return null;
-    }
+  async function compileWGSL() {
+    const result = await simulationRuntime.compileProject(getSimulationProject());
+    syncRuntimeState();
+    isCompiled = Boolean(result?.ok);
+    updateButtons();
+    return result;
   }
 
   function buildComputePipelines(device, shaderModules) {
-    computePipelines = [];
-    if (!pipeline.length) {
-      logConsole('Aucun pipeline défini : module compilé sans pipeline.', 'pipeline');
-      isCompiled = false; updateButtons();
-      return;
-    }
-    if (!validateLoopStructure(pipeline)) {
-      logConsole('Structure de boucle invalide : vérifiez vos Début/Fin.', 'pipeline');
-      isCompiled = false; updateButtons();
-      return;
-    }
-    // Layout commun: buffers + uniforms fixes
-    sharedPipelineLayout = null;
-    try {
-      const entries = [];
-      const bufferBindingOffset = BUFFER_BINDING_OFFSET;
-      const maxBindings = getMaxStorageBindings(device);
-      for (let i = 0; i < maxBindings; i += 1) {
-        entries.push({
-          binding: bufferBindingOffset + i,
-          visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: 'storage' },
-        });
-      }
-      entries.push(
-        { binding: UNIFORM_BINDINGS.step, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-        { binding: UNIFORM_BINDINGS.mouseX, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-        { binding: UNIFORM_BINDINGS.mouseY, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-        { binding: UNIFORM_BINDINGS.mouseZ, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-        { binding: UNIFORM_BINDINGS.mouseBtn, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-        { binding: UNIFORM_BINDINGS.key, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-      );
-      const bindGroupLayout = device.createBindGroupLayout({ entries });
-      sharedPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
-    } catch (err) {
-      logConsole(`Impossible de créer le layout commun: ${err.message || err}`, 'pipeline');
-    }
-    const flatSteps = expandPipeline(pipeline).filter((p) => (p.type || 'step') === 'step');
-    flatSteps.forEach((pipeStep, idx) => {
-      const shader = shaders.find((s) => s.id === pipeStep.shaderId);
-      if (!shader) {
-        logConsole(`Pipeline ${idx + 1}: shader manquant.`, 'pipeline');
-        isCompiled = false; updateButtons();
-        return;
-      }
-      const entryPoint = sanitizeEntryName(shader.name);
-      try {
-        const moduleEntry = shaderModules.get(shader.id);
-        if (!moduleEntry) {
-          logConsole(`Pipeline ${idx + 1}: module WGSL manquant pour ${shader.name}.`, 'pipeline');
-          isCompiled = false; updateButtons();
-          return;
-        }
-        const computePipe = device.createComputePipeline({
-          layout: sharedPipelineLayout || 'auto',
-          compute: { module: moduleEntry.module, entryPoint },
-        });
-        computePipelines.push({ pipeId: pipeStep.id, pipeline: computePipe, shaderId: shader.id });
-        logConsole(`Pipeline ${idx + 1} créé pour ${shader.name}.`, 'pipeline');
-        isCompiled = true; updateButtons();
-      } catch (err) {
-        logConsole(`Échec création pipeline pour ${shader.name}: ${err.message || err}`, 'pipeline');
-        isCompiled = false; updateButtons();
-      }
-    });
+    const ok = simulationRuntime.buildComputePipelines(getSimulationProject(device), shaderModules);
+    isCompiled = Boolean(ok);
+    updateButtons();
+    return ok;
   }
 
-  function prepareBindingBuffers(device, wgsl) {
-    const entries = [];
-    const readTasks = [];
-    if (!wgsl) return { entries, readTasks };
-
-    const bindings = new Map();
-    // Textures bindings
-    textures.forEach((tex, idx) => {
-      bindings.set(idx, {
-        binding: idx,
-        scalar: getTextureScalarWGSL(tex.type),
-        components: getTextureStorageStrideCount(tex.type),
-        length: tex.size.x * tex.size.y * tex.size.z,
-        tex,
-        usage: 'storage',
-      });
-    });
-
-    // Other storage buffers from WGSL
-    const storageRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<storage,[^>]*>\s*[A-Za-z_][\w]*\s*:\s*array<\s*([^>]+(?:<[^>]+>)?)\s*>/g;
-    let match;
-    while ((match = storageRegex.exec(wgsl)) !== null) {
-      const binding = parseInt(match[1], 10);
-      const scalarToken = (match[2] || '').replace(/\s+/g, '').toLowerCase();
-      const scalar = scalarToken === 'vec4<f32>'
-        ? 'vec4<f32>'
-        : (scalarToken === 'vec3<f32>'
-          ? 'vec3<f32>'
-          : (scalarToken.startsWith('f') ? 'f32' : (scalarToken.startsWith('u') ? 'u32' : 'i32')));
-      const components = scalar === 'vec4<f32>' ? 4 : (scalar === 'vec3<f32>' ? 3 : 1);
-      if (!bindings.has(binding)) {
-        bindings.set(binding, {
-          binding,
-          scalar,
-          components,
-          length: 256,
-          tex: null,
-          usage: 'storage',
-        });
-      }
-    }
-
-    // Step counter + mouse uniforms if present in WGSL
-    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*step\s*:\s*u32\s*;/i.exec(wgsl);
-    if (stepMatch) {
-      const binding = parseInt(stepMatch[1], 10);
-      bindings.set(binding, {
-        binding,
-        scalar: 'u32',
-        components: 1,
-        length: 1,
-        tex: null,
-        usage: 'uniform',
-        isStepCounter: true,
-      });
-    }
-    const mouseXMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseX\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseXMatch) {
-      const binding = parseInt(mouseXMatch[1], 10);
-      bindings.set(binding, {
-        binding,
-        scalar: 'u32',
-        components: 1,
-        length: 1,
-        tex: null,
-        usage: 'uniform',
-        isMouseX: true,
-      });
-    }
-    const mouseYMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseY\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseYMatch) {
-      const binding = parseInt(mouseYMatch[1], 10);
-      bindings.set(binding, {
-        binding,
-        scalar: 'u32',
-        components: 1,
-        length: 1,
-        tex: null,
-        usage: 'uniform',
-        isMouseY: true,
-      });
-    }
-    const mouseZMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseZ\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseZMatch) {
-      const binding = parseInt(mouseZMatch[1], 10);
-      bindings.set(binding, {
-        binding,
-        scalar: 'u32',
-        components: 1,
-        length: 1,
-        tex: null,
-        usage: 'uniform',
-        isMouseZ: true,
-      });
-    }
-    const keyMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*key\s*:\s*u32\s*;/i.exec(wgsl);
-    if (keyMatch) {
-      const binding = parseInt(keyMatch[1], 10);
-      bindings.set(binding, {
-        binding,
-        scalar: 'u32',
-        components: 1,
-        length: 1,
-        tex: null,
-        usage: 'uniform',
-        isKeyInput: true,
-      });
-    }
-    const mouseBtnMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseBtn\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseBtnMatch) {
-      const binding = parseInt(mouseBtnMatch[1], 10);
-      bindings.set(binding, {
-        binding,
-        scalar: 'u32',
-        components: 1,
-        length: 1,
-        tex: null,
-        usage: 'uniform',
-        isMouseBtn: true,
-      });
-    }
-
-    bindings.forEach((info, binding) => {
-      const byteLength = Math.max(4, info.length * (info.components || 1) * 4);
-      let bufEntry = bindingBuffers.get(binding);
-      if (!bufEntry || bufEntry.size !== byteLength) {
-        const buffer = device.createBuffer({
-          size: byteLength,
-          usage: (info.usage === 'uniform' ? GPUBufferUsage.UNIFORM : GPUBufferUsage.STORAGE)
-            | GPUBufferUsage.COPY_SRC
-            | GPUBufferUsage.COPY_DST,
-        });
-        bufEntry = { buffer, size: byteLength };
-        bindingBuffers.set(binding, bufEntry);
-      }
-      entries.push({
-        binding,
-        resource: { buffer: bufEntry.buffer },
-      });
-
-      if (info.tex) {
-        const readBuffer = device.createBuffer({
-          size: byteLength,
-          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        });
-        readTasks.push({ dst: readBuffer, src: bufEntry.buffer, size: byteLength, tex: info.tex });
-      }
-      bindingMetas.set(binding, info);
-      if (info.isStepCounter) {
-        stepBinding = binding;
-      }
-      if (info.isMouseX) {
-        mouseXBinding = binding;
-      }
-      if (info.isMouseY) {
-        mouseYBinding = binding;
-      }
-      if (info.isMouseZ) {
-        mouseZBinding = binding;
-      }
-      if (info.isKeyInput) {
-        keyBinding = binding;
-      }
-      if (info.isMouseBtn) {
-        mouseBtnBinding = binding;
-      }
-    });
-
-    return { entries, readTasks };
-  }
-
-  function deriveLayoutEntriesFromWGSL(wgsl) {
-    if (!wgsl) return [];
-    const bindings = new Map();
-
-    // Textures declared dans l'UI
-    textures.forEach((tex, idx) => {
-      bindings.set(idx, {
-        binding: idx,
-        type: 'storage',
-      });
-    });
-
-    // Storage buffers détectés dans le WGSL
-    const storageRegex = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<storage,[^>]*>\s*[A-Za-z_][\w]*\s*:/g;
-    let m;
-    while ((m = storageRegex.exec(wgsl)) !== null) {
-      const binding = parseInt(m[1], 10);
-      if (!Number.isNaN(binding)) {
-        bindings.set(binding, { binding, type: 'storage' });
-      }
-    }
-
-    // step + mouse uniforms si présents
-    const stepMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*step\s*:\s*u32\s*;/i.exec(wgsl);
-    if (stepMatch) {
-      const binding = parseInt(stepMatch[1], 10);
-      if (!Number.isNaN(binding)) {
-        bindings.set(binding, { binding, type: 'uniform' });
-      }
-    }
-    const mouseXMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseX\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseXMatch) {
-      const binding = parseInt(mouseXMatch[1], 10);
-      if (!Number.isNaN(binding)) {
-        bindings.set(binding, { binding, type: 'uniform' });
-      }
-    }
-    const mouseYMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseY\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseYMatch) {
-      const binding = parseInt(mouseYMatch[1], 10);
-      if (!Number.isNaN(binding)) {
-        bindings.set(binding, { binding, type: 'uniform' });
-      }
-    }
-    const mouseZMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseZ\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseZMatch) {
-      const binding = parseInt(mouseZMatch[1], 10);
-      if (!Number.isNaN(binding)) {
-        bindings.set(binding, { binding, type: 'uniform' });
-      }
-    }
-    const keyMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*key\s*:\s*u32\s*;/i.exec(wgsl);
-    if (keyMatch) {
-      const binding = parseInt(keyMatch[1], 10);
-      if (!Number.isNaN(binding)) {
-        bindings.set(binding, { binding, type: 'uniform' });
-      }
-    }
-    const mouseBtnMatch = /@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*(\d+)\s*\)\s*var<uniform>\s*mouseBtn\s*:\s*u32\s*;/i.exec(wgsl);
-    if (mouseBtnMatch) {
-      const binding = parseInt(mouseBtnMatch[1], 10);
-      if (!Number.isNaN(binding)) {
-        bindings.set(binding, { binding, type: 'uniform' });
-      }
-    }
-
-    return Array.from(bindings.values())
-      .sort((a, b) => a.binding - b.binding)
-      .map((info) => ({
-        binding: info.binding,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: info.type === 'uniform' ? 'uniform' : 'storage' },
-      }));
-  }
-
-  function uploadInitialTextureBuffers() {
-    if (initialUploadDone) return;
-    if (!currentDevice) return;
-    textures.forEach((tex) => {
-      const entry = ensureTextureBuffer(currentDevice, tex);
-      if (!entry) return;
-      const flat = flattenTextureToTypedArray(tex);
-      currentDevice.queue.writeBuffer(
-        entry.buffer,
-        0,
-        flat.buffer,
-        flat.byteOffset,
-        flat.byteLength,
-      );
-    });
-    initialUploadDone = true;
-  }
-
-  function updateTextureValuesFromFlat(tex, flatArray) {
-    const { x, y, z } = tex.size;
-    const lanes = getTextureComponentCount(tex.type);
-    const strideLanes = getTextureStorageStrideCount(tex.type);
-    tex.values = [];
-    let ptr = 0;
-    for (let k = 0; k < z; k += 1) {
-      const layer = [];
-      for (let j = 0; j < y; j += 1) {
-        const row = [];
-        for (let i = 0; i < x; i += 1) {
-          if (lanes > 1) {
-            const vec = [];
-            for (let lane = 0; lane < lanes; lane += 1) {
-              vec.push(Number(flatArray[ptr + lane] ?? 0));
-            }
-            row.push(vec);
-            ptr += strideLanes;
-          } else {
-            row.push(flatArray[ptr] ?? 0);
-            ptr += 1;
-          }
-        }
-        layer.push(row);
-      }
-      tex.values.push(layer);
-    }
-  }
-
-  function flattenTextureToTypedArray(tex) {
-    const { x, y, z } = tex.size;
-    const total = x * y * z;
-    const lanes = getTextureComponentCount(tex.type);
-    const strideLanes = getTextureStorageStrideCount(tex.type);
-    const normalized = normalizeTextureType(tex.type);
-    const isFloat = isFloatTextureType(normalized);
-    const isUint = normalized === 'uint';
-    const flat = isFloat
-      ? new Float32Array(total * strideLanes)
-      : (isUint ? new Uint32Array(total * strideLanes) : new Int32Array(total * strideLanes));
-    let ptr = 0;
-    for (let k = 0; k < z; k += 1) {
-      for (let j = 0; j < y; j += 1) {
-        for (let i = 0; i < x; i += 1) {
-          const val = tex.values?.[k]?.[j]?.[i];
-          if (lanes > 1) {
-            const vec = lanes === 4 ? normalizeVec4Value(val) : normalizeVec3Value(val);
-            for (let lane = 0; lane < lanes; lane += 1) {
-              flat[ptr + lane] = vec[lane];
-            }
-            ptr += strideLanes;
-          } else {
-            flat[ptr] = coerceTextureValue(val, normalized);
-            ptr += 1;
-          }
-        }
-      }
-    }
-    return flat;
-  }
+  const updateTextureValuesFromFlat = StudioCore.updateTextureValuesFromFlat;
+  const flattenTextureToTypedArray = StudioCore.flattenTextureToTypedArray;
 
   function resetGPUState() {
-    computePipelines = [];
-    lastCompiledWGSL = '';
-    simulationSteps = 0;
+    simulationRuntime.resetExecution();
+    syncRuntimeState();
     renderStepCounter();
-    updateStepCounterBuffer();
-    textureBuffers.forEach((entry) => {
-      if (entry?.buffer) entry.buffer.destroy();
-    });
-    textureBuffers = new Map();
-    uniformBuffers.forEach((buf) => {
-      if (buf?.destroy) buf.destroy();
-    });
-    uniformBuffers = new Map();
-    dummyStorageBuffers.forEach((buf) => {
-      if (buf?.destroy) buf.destroy();
-    });
-    dummyStorageBuffers = new Map();
-    if (currentDevice && typeof currentDevice.destroy === 'function') {
-      currentDevice.destroy();
-    }
-    currentDevice = null;
-    markBindingsDirty();
   }
-
   function serializeProject() {
     return {
       version: 1,
