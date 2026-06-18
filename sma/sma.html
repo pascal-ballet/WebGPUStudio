@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Syst&#232;me Multiagents</title>
+  <link rel="stylesheet" href="sma_style.css" />
+  <script src="webgpustudio2.js" defer></script>
+  <script src="sma_app.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Syst&#232;me Multiagents</h1>
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Projet SimBugs</p>
+          <h2>Vue 2D du buffer Render</h2>
+        </div>
+        <div class="panel-actions">
+          <span class="buffer-meta" id="bufferMeta">Chargement...</span>
+          <span class="step-label" id="stepLabel">step = 0</span>
+          <button type="button" class="run-button" id="runButton" disabled>run</button>
+        </div>
+      </div>
+
+      <div class="preview-area">
+        <canvas id="bufferCanvas" class="texture-canvas" width="512" height="256"></canvas>
+      </div>
+
+      <div class="buffer-footer">
+        <div class="buffer-readout" id="bufferReadout">Chargement de SimBugs.wgstudio...</div>
+        <div class="run-status" id="runStatus">Initialisation...</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
