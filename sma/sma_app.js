@@ -41,6 +41,7 @@
   let isCompiling = false;
   let stepFrameId = 0;
   let displayedSlice = 0;
+  let pendingBufferWrites = [];
 
   setupCanvasInteractions();
   setupPanelClick();
@@ -174,34 +175,71 @@
   }
 
   function writeClickBufferValue(event) {
+    const write = buildClickBufferWrite(event);
+    if (!write) return;
+
+    const runtimeState = runtime.state || {};
+    if (runtimeState.isStepRunning) {
+      pendingBufferWrites.push(write);
+      setStatus(`Clic en attente - ${pendingBufferWrites.length} placement(s) apres le step.`);
+      if (readout) {
+        readout.textContent = `${CLICK_BUFFER_NAME}(${write.position.x}, ${write.position.y}, ${write.position.z}) sera place apres le step.`;
+      }
+      return;
+    }
+
+    applyClickBufferWrite(write);
+
+    if ((runtimeState.stepCount || 0) === 0) {
+      pendingBufferWrites.push(write);
+      setStatus(`${CLICK_BUFFER_NAME}[${write.index}] = 0xFFFF44FF - reapplique apres le premier step.`);
+    }
+  }
+
+  function buildClickBufferWrite(event) {
     if (!projectState) {
       setStatus('Projet non charge.');
-      return;
+      return null;
     }
 
     const buffer = findProjectBuffer(projectState, CLICK_BUFFER_NAME);
     const positionBuffer = findProjectBuffer(projectState, CLICK_POSITION_BUFFER_NAME);
     if (!buffer) {
       setStatus(`Buffer "${CLICK_BUFFER_NAME}" introuvable.`);
-      return;
+      return null;
     }
     if (!positionBuffer) {
       setStatus(`Buffer "${CLICK_POSITION_BUFFER_NAME}" introuvable.`);
-      return;
+      return null;
     }
 
     const position = getClickedBufferPosition(event, buffer);
     if (!position) {
       setStatus('Cliquez dans la zone du buffer Render.');
-      return;
+      return null;
     }
 
     const index = getFlatBufferIndex(position, buffer.size);
     if (index === null) {
       setStatus('Index de clic hors limites.');
-      return;
+      return null;
     }
 
+    const positionIndex = getFlatBufferIndex(position, positionBuffer.size);
+    if (positionIndex === null) {
+      setStatus(`Position de clic hors limites pour ${CLICK_POSITION_BUFFER_NAME}.`);
+      return null;
+    }
+
+    return { position, index };
+  }
+
+  function applyClickBufferWrite(write, options = {}) {
+    const buffer = findProjectBuffer(projectState, CLICK_BUFFER_NAME);
+    const positionBuffer = findProjectBuffer(projectState, CLICK_POSITION_BUFFER_NAME);
+    if (!buffer || !positionBuffer || !write?.position) return false;
+
+    const { position, index } = write;
     setBufferValueAtPosition(buffer, position, CLICK_BUFFER_VALUE);
     setBufferValueAtPosition(positionBuffer, position, [
       position.x + 0.85,
@@ -209,10 +247,37 @@
       0,
     ]);
     runtime.markBindingsDirty();
-    setStatus(`${CLICK_BUFFER_NAME}[${index}] = 0xFFFF44FF, ${CLICK_POSITION_BUFFER_NAME}[${index}] = vec3(${position.x + 0.85}, ${position.y + 0.5}, 0)`);
-    if (readout) {
+
+    if (!options.silent) {
+      setStatus(`${CLICK_BUFFER_NAME}[${index}] = 0xFFFF44FF, ${CLICK_POSITION_BUFFER_NAME}[${index}] = vec3(${position.x + 0.85}, ${position.y + 0.5}, 0)`);
+    }
+    if (!options.silent && readout) {
       readout.textContent = `${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = 0xFFFF44FF ; ${CLICK_POSITION_BUFFER_NAME} = (${position.x + 0.85}, ${position.y + 0.5}, 0)`;
     }
+    return true;
+  }
+
+  function flushPendingBufferWrites() {
+    if (!pendingBufferWrites.length) return 0;
+
+    const writes = pendingBufferWrites;
+    pendingBufferWrites = [];
+
+    let applied = 0;
+    let lastWrite = null;
+    writes.forEach((write) => {
+      if (applyClickBufferWrite(write, { silent: true })) {
+        applied += 1;
+        lastWrite = write;
+      }
+    });
+
+    if (lastWrite && readout) {
+      const { position } = lastWrite;
+      readout.textContent = `${applied} placement(s) applique(s). Dernier: ${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = 0xFFFF44FF`;
+    }
+
+    return applied;
   }
 
   function getClickedBufferPosition(event, targetBuffer) {
@@ -301,14 +366,18 @@
     const started = runtime.step(projectState, {
       shouldReadback: true,
       onComplete({ stepCount }) {
+        const appliedWrites = flushPendingBufferWrites();
         renderBuffer = findProjectBuffer(projectState, TARGET_BUFFER_NAME);
         if (renderBuffer) {
           render2DBuffer(renderBuffer, displayedSlice);
         }
         setStepLabel(stepCount);
         if (isRunning) {
-          setStatus(`Execution en cours - step ${stepCount}`);
+          const writeText = appliedWrites ? ` - ${appliedWrites} placement(s) applique(s)` : '';
+          setStatus(`Execution en cours - step ${stepCount}${writeText}`);
           scheduleNextStep();
+        } else if (appliedWrites) {
+          setStatus(`${appliedWrites} placement(s) applique(s) apres le step.`);
         }
       },
     });
