@@ -3,8 +3,11 @@
 
   const PROJECT_URL = 'SimBugs.wgstudio';
   const TARGET_BUFFER_NAME = 'Render';
+  const CLICK_BUFFER_NAME = 'Agent_0';
+  const CLICK_BUFFER_VALUE = 0xffff44ff >>> 0;
 
   const StudioCore = window.WebGPUStudio;
+  const panel = document.querySelector('.panel');
   const canvas = document.getElementById('bufferCanvas');
   const meta = document.getElementById('bufferMeta');
   const readout = document.getElementById('bufferReadout');
@@ -39,6 +42,7 @@
   let displayedSlice = 0;
 
   setupCanvasInteractions();
+  setupPanelClick();
   setupRunButton();
   loadProject(PROJECT_URL, TARGET_BUFFER_NAME);
 
@@ -158,6 +162,78 @@
   function findProjectBuffer(project, bufferName) {
     const textures = Array.isArray(project?.textures) ? project.textures : [];
     return textures.find((texture) => texture?.name === bufferName) || null;
+  }
+
+  function setupPanelClick() {
+    if (!panel) return;
+    panel.addEventListener('click', (event) => {
+      if (event.target?.closest?.('button')) return;
+      writeClickBufferValue(event);
+    });
+  }
+
+  function writeClickBufferValue(event) {
+    if (!projectState) {
+      setStatus('Projet non charge.');
+      return;
+    }
+
+    const buffer = findProjectBuffer(projectState, CLICK_BUFFER_NAME);
+    if (!buffer) {
+      setStatus(`Buffer "${CLICK_BUFFER_NAME}" introuvable.`);
+      return;
+    }
+
+    const position = getClickedBufferPosition(event, buffer);
+    if (!position) {
+      setStatus('Cliquez dans la zone du buffer Render.');
+      return;
+    }
+
+    const index = getFlatBufferIndex(position, buffer.size);
+    if (index === null) {
+      setStatus('Index de clic hors limites.');
+      return;
+    }
+
+    setBufferValueAtPosition(buffer, position, CLICK_BUFFER_VALUE);
+    runtime.markBindingsDirty();
+    setStatus(`${CLICK_BUFFER_NAME}[${index}] = 0xFFFF44FF`);
+    if (readout) {
+      readout.textContent = `${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = 0xFFFF44FF`;
+    }
+  }
+
+  function getClickedBufferPosition(event, targetBuffer) {
+    if (!renderBuffer || !targetBuffer) return null;
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = Math.floor(((event.clientX - rect.left) / rect.width) * renderBuffer.size.x);
+    const canvasY = Math.floor(((event.clientY - rect.top) / rect.height) * renderBuffer.size.y);
+
+    if (canvasX < 0 || canvasX >= renderBuffer.size.x || canvasY < 0 || canvasY >= renderBuffer.size.y) {
+      return null;
+    }
+
+    const renderY = renderBuffer.size.y - canvasY - 1;
+    return {
+      x: clamp(Math.floor((canvasX / renderBuffer.size.x) * targetBuffer.size.x), 0, targetBuffer.size.x - 1),
+      y: clamp(Math.floor((renderY / renderBuffer.size.y) * targetBuffer.size.y), 0, targetBuffer.size.y - 1),
+      z: clamp(displayedSlice, 0, targetBuffer.size.z - 1),
+    };
+  }
+
+  function getFlatBufferIndex(position, size) {
+    if (!size) return null;
+    if (position.x < 0 || position.x >= size.x) return null;
+    if (position.y < 0 || position.y >= size.y) return null;
+    if (position.z < 0 || position.z >= size.z) return null;
+
+    return position.z * size.x * size.y + position.y * size.x + position.x;
+  }
+
+  function setBufferValueAtPosition(buffer, position, value) {
+    ensureValueShape(buffer);
+    buffer.values[position.z][position.y][position.x] = value;
   }
 
   async function startRun() {
