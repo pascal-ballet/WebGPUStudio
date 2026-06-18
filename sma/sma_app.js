@@ -4,6 +4,7 @@
   const PROJECT_URL = 'SimBugs.wgstudio';
   const TARGET_BUFFER_NAME = 'Render';
   const CLICK_BUFFER_NAME = 'Agent_0';
+  const CLICK_POSITION_BUFFER_NAME = 'AgentX';
   const CLICK_BUFFER_VALUE = 0xffff44ff >>> 0;
 
   const StudioCore = window.WebGPUStudio;
@@ -179,8 +180,13 @@
     }
 
     const buffer = findProjectBuffer(projectState, CLICK_BUFFER_NAME);
+    const positionBuffer = findProjectBuffer(projectState, CLICK_POSITION_BUFFER_NAME);
     if (!buffer) {
       setStatus(`Buffer "${CLICK_BUFFER_NAME}" introuvable.`);
+      return;
+    }
+    if (!positionBuffer) {
+      setStatus(`Buffer "${CLICK_POSITION_BUFFER_NAME}" introuvable.`);
       return;
     }
 
@@ -197,10 +203,15 @@
     }
 
     setBufferValueAtPosition(buffer, position, CLICK_BUFFER_VALUE);
+    setBufferValueAtPosition(positionBuffer, position, [
+      position.x + 0.85,
+      position.y + 0.5,
+      0,
+    ]);
     runtime.markBindingsDirty();
-    setStatus(`${CLICK_BUFFER_NAME}[${index}] = 0xFFFF44FF`);
+    setStatus(`${CLICK_BUFFER_NAME}[${index}] = 0xFFFF44FF, ${CLICK_POSITION_BUFFER_NAME}[${index}] = vec3(${position.x + 0.85}, ${position.y + 0.5}, 0)`);
     if (readout) {
-      readout.textContent = `${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = 0xFFFF44FF`;
+      readout.textContent = `${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = 0xFFFF44FF ; ${CLICK_POSITION_BUFFER_NAME} = (${position.x + 0.85}, ${position.y + 0.5}, 0)`;
     }
   }
 
