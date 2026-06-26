@@ -16,16 +16,18 @@
           <p class="eyebrow">SysMA v0.1 - (c) Pascal Ballet - Université de Brest</p>
         </div>
         <div class="panel-actions">
+          <button type="button" class="header-button" id="loadSaveButton">Charger</button>
           <label class="project-name-field" for="projectNameInput">
             <span>Projet :</span>
             <input id="projectNameInput" type="text" value="ma simulation" />
           </label>
-          <span class="buffer-meta" id="bufferMeta">Chargement...</span>
-          <span class="step-label" id="stepLabel">step = 0</span>
-          <button type="button" class="header-button" id="loadSaveButton">Charger</button>
-          <input id="saveFileInput" class="file-input" type="file" accept=".sma" />
           <button type="button" class="header-button" id="saveButton" disabled>Sauver</button>
+          &nbsp;&nbsp;&nbsp;
           <button type="button" class="run-button" id="runButton" disabled>run</button>
+          <span class="step-label" id="stepLabel">step = 0</span>
+          &nbsp;&nbsp;&nbsp;
+          <input id="saveFileInput" class="file-input" type="file" accept=".sma" />
+          <span class="buffer-meta" id="bufferMeta">Chargement...</span>
         </div>
       </div>
 
