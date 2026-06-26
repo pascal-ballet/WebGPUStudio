@@ -5,16 +5,27 @@
   const TARGET_BUFFER_NAME = 'Render';
   const CLICK_BUFFER_NAME = 'Agent_0';
   const CLICK_POSITION_BUFFER_NAME = 'AgentX';
-  const CLICK_BUFFER_VALUE = 0xffff44ff >>> 0;
+  const DEFAULT_AGENT_TYPES = [
+    { id: 'agent-type-rouge', name: 'Rouge', color: '#ff0000' },
+    { id: 'agent-type-vert', name: 'Vert', color: '#00ff00' },
+    { id: 'agent-type-bleu', name: 'Bleu', color: '#0000ff' },
+    { id: 'agent-type-violet', name: 'Violet', color: '#ff44ff' },
+  ];
+  const AGENT_TYPE_COLOR_SEQUENCE = ['#ff0000', '#00ff00', '#0000ff', '#ff44ff', '#e0a400', '#00a5a5'];
+  const FALLBACK_AGENT_TYPE_COLOR = '#ff44ff';
 
   const StudioCore = window.WebGPUStudio;
-  const panel = document.querySelector('.panel');
   const canvas = document.getElementById('bufferCanvas');
   const meta = document.getElementById('bufferMeta');
   const readout = document.getElementById('bufferReadout');
   const runStatus = document.getElementById('runStatus');
   const runButton = document.getElementById('runButton');
   const stepLabel = document.getElementById('stepLabel');
+  const agentTypesList = document.getElementById('agentTypesList');
+  const addAgentTypeButton = document.getElementById('addAgentTypeButton');
+  const removeAgentTypeButton = document.getElementById('removeAgentTypeButton');
+  const agentNameInput = document.getElementById('agentName');
+  const agentColorInput = document.getElementById('agentColor');
 
   if (!StudioCore || !canvas) return;
 
@@ -42,7 +53,9 @@
   let stepFrameId = 0;
   let displayedSlice = 0;
   let pendingBufferWrites = [];
+  let selectedAgentTypeId = null;
 
+  setupAgentTypeControls();
   setupCanvasInteractions();
   setupPanelClick();
   setupRunButton();
@@ -69,6 +82,8 @@
 
       const project = await response.json();
       projectState = prepareProject(project);
+      selectedAgentTypeId = projectState.agentTypes[0]?.id || null;
+      renderAgentTypes();
       renderBuffer = findProjectBuffer(projectState, bufferName);
       if (!renderBuffer) {
         throw new Error(`Buffer "${bufferName}" introuvable`);
@@ -83,6 +98,8 @@
       const message = error?.message || String(error);
       projectState = null;
       renderBuffer = null;
+      selectedAgentTypeId = null;
+      renderAgentTypes();
       if (meta) meta.textContent = 'Erreur de chargement';
       if (readout) readout.textContent = `Impossible de charger ${PROJECT_URL} : ${message}`;
       setStatus('Chargement impossible.');
@@ -106,12 +123,29 @@
 
     return {
       ...source,
+      agentTypes: prepareAgentTypes(source?.agentTypes),
       textures,
       shaders,
       functions: Array.isArray(source?.functions) ? source.functions.map((fn) => ({ ...fn })) : [],
       parameters: Array.isArray(source?.parameters) ? source.parameters.map((param) => ({ ...param })) : [],
       pipeline,
       pipelineShaderChoiceId: source?.pipelineShaderChoiceId || shaders[0]?.id || null,
+    };
+  }
+
+  function prepareAgentTypes(source) {
+    const items = Array.isArray(source) ? source : DEFAULT_AGENT_TYPES;
+    return items.map(prepareAgentType);
+  }
+
+  function prepareAgentType(source, index) {
+    const fallback = DEFAULT_AGENT_TYPES[index % DEFAULT_AGENT_TYPES.length] || DEFAULT_AGENT_TYPES[0];
+    const name = String(source?.name || fallback.name || `Type ${index + 1}`).trim() || `Type ${index + 1}`;
+    return {
+      ...source,
+      id: String(source?.id || createAgentTypeId()),
+      name,
+      color: normalizeHexColor(source?.color, fallback.color),
     };
   }
 
@@ -166,12 +200,195 @@
     return textures.find((texture) => texture?.name === bufferName) || null;
   }
 
-  function setupPanelClick() {
-    if (!panel) return;
-    panel.addEventListener('click', (event) => {
-      if (event.target?.closest?.('button')) return;
-      writeClickBufferValue(event);
+  function setupAgentTypeControls() {
+    if (addAgentTypeButton) {
+      addAgentTypeButton.addEventListener('click', addAgentType);
+    }
+    if (removeAgentTypeButton) {
+      removeAgentTypeButton.addEventListener('click', removeSelectedAgentType);
+    }
+    if (agentNameInput) {
+      agentNameInput.addEventListener('input', updateSelectedAgentTypeName);
+    }
+    if (agentColorInput) {
+      agentColorInput.addEventListener('input', updateSelectedAgentTypeColor);
+    }
+    updateAgentTypeControls();
+  }
+
+  function renderAgentTypes() {
+    if (!agentTypesList) return;
+
+    agentTypesList.replaceChildren();
+    const agentTypes = getAgentTypes();
+
+    if (!agentTypes.length) {
+      selectedAgentTypeId = null;
+      const item = document.createElement('li');
+      item.className = 'is-empty';
+      item.textContent = 'Aucun type';
+      agentTypesList.appendChild(item);
+      updateAgentTypeControls();
+      return;
+    }
+
+    if (!agentTypes.some((agentType) => agentType.id === selectedAgentTypeId)) {
+      selectedAgentTypeId = agentTypes[0].id;
+    }
+
+    agentTypes.forEach((agentType) => {
+      const item = document.createElement('li');
+      const button = document.createElement('button');
+      const swatch = document.createElement('span');
+      const name = document.createElement('span');
+      const isSelected = agentType.id === selectedAgentTypeId;
+
+      button.type = 'button';
+      button.className = `agent-type-button${isSelected ? ' is-selected' : ''}`;
+      button.dataset.agentTypeId = agentType.id;
+      button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+      if (isSelected) button.setAttribute('aria-current', 'true');
+
+      swatch.className = 'agent-type-swatch';
+      swatch.style.backgroundColor = agentType.color;
+      swatch.setAttribute('aria-hidden', 'true');
+
+      name.className = 'agent-type-name';
+      name.textContent = agentType.name;
+
+      button.append(swatch, name);
+      button.addEventListener('click', () => selectAgentType(agentType.id));
+      item.appendChild(button);
+      agentTypesList.appendChild(item);
     });
+
+    updateAgentTypeControls();
+  }
+
+  function getAgentTypes() {
+    return Array.isArray(projectState?.agentTypes) ? projectState.agentTypes : [];
+  }
+
+  function getMutableAgentTypes() {
+    if (!projectState) return [];
+    if (!Array.isArray(projectState.agentTypes)) projectState.agentTypes = [];
+    return projectState.agentTypes;
+  }
+
+  function getSelectedAgentType() {
+    return getAgentTypes().find((agentType) => agentType.id === selectedAgentTypeId) || null;
+  }
+
+  function selectAgentType(agentTypeId) {
+    selectedAgentTypeId = agentTypeId;
+    renderAgentTypes();
+  }
+
+  function addAgentType() {
+    const agentTypes = getMutableAgentTypes();
+    if (!projectState) return;
+
+    const index = agentTypes.length;
+    const agentType = {
+      id: createAgentTypeId(),
+      name: makeUniqueAgentTypeName(agentTypes),
+      color: AGENT_TYPE_COLOR_SEQUENCE[index % AGENT_TYPE_COLOR_SEQUENCE.length],
+    };
+
+    agentTypes.push(agentType);
+    selectedAgentTypeId = agentType.id;
+    renderAgentTypes();
+  }
+
+  function removeSelectedAgentType() {
+    const agentTypes = getMutableAgentTypes();
+    const index = agentTypes.findIndex((agentType) => agentType.id === selectedAgentTypeId);
+    if (index === -1) return;
+
+    agentTypes.splice(index, 1);
+    selectedAgentTypeId = agentTypes[Math.min(index, agentTypes.length - 1)]?.id || null;
+    renderAgentTypes();
+  }
+
+  function updateSelectedAgentTypeName() {
+    const agentType = getSelectedAgentType();
+    if (!agentType || !agentNameInput) return;
+
+    agentType.name = agentNameInput.value.trim() || 'Sans nom';
+    renderAgentTypes();
+  }
+
+  function updateSelectedAgentTypeColor() {
+    const agentType = getSelectedAgentType();
+    if (!agentType || !agentColorInput) return;
+
+    agentType.color = normalizeHexColor(agentColorInput.value, agentType.color);
+    renderAgentTypes();
+  }
+
+  function updateAgentTypeControls() {
+    const hasProject = Boolean(projectState);
+    const selectedAgentType = getSelectedAgentType();
+
+    if (addAgentTypeButton) addAgentTypeButton.disabled = !hasProject;
+    if (removeAgentTypeButton) removeAgentTypeButton.disabled = !hasProject || !selectedAgentType;
+
+    if (agentNameInput) {
+      agentNameInput.disabled = !selectedAgentType;
+      if (document.activeElement !== agentNameInput) {
+        agentNameInput.value = selectedAgentType?.name || '';
+      }
+    }
+    if (agentColorInput) {
+      agentColorInput.disabled = !selectedAgentType;
+      agentColorInput.value = selectedAgentType?.color || '#000000';
+    }
+  }
+
+  function makeUniqueAgentTypeName(agentTypes) {
+    let index = agentTypes.length + 1;
+    let name = `Type ${index}`;
+
+    while (agentTypes.some((agentType) => agentType.name === name)) {
+      index += 1;
+      name = `Type ${index}`;
+    }
+
+    return name;
+  }
+
+  function createAgentTypeId() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return `agent-type-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  }
+
+  function normalizeHexColor(value, fallback = FALLBACK_AGENT_TYPE_COLOR) {
+    const text = String(value || '').trim();
+    const fallbackText = /^#[0-9a-f]{6}$/i.test(fallback) ? fallback : FALLBACK_AGENT_TYPE_COLOR;
+
+    if (/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
+    if (/^#[0-9a-f]{3}$/i.test(text)) {
+      return `#${text[1]}${text[1]}${text[2]}${text[2]}${text[3]}${text[3]}`.toLowerCase();
+    }
+
+    return fallbackText.toLowerCase();
+  }
+
+  function colorToBufferValue(color) {
+    const normalized = normalizeHexColor(color);
+    const r = parseInt(normalized.slice(1, 3), 16);
+    const g = parseInt(normalized.slice(3, 5), 16);
+    const b = parseInt(normalized.slice(5, 7), 16);
+    return (((0xff << 24) >>> 0) | (b << 16) | (g << 8) | r) >>> 0;
+  }
+
+  function formatUintHex(value) {
+    return `0x${((Number(value) || 0) >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
+  }
+
+  function setupPanelClick() {
+    if (!canvas) return;
+    canvas.addEventListener('click', writeClickBufferValue);
   }
 
   function writeClickBufferValue(event) {
@@ -183,7 +400,7 @@
       pendingBufferWrites.push(write);
       setStatus(`Clic en attente - ${pendingBufferWrites.length} placement(s) apres le step.`);
       if (readout) {
-        readout.textContent = `${CLICK_BUFFER_NAME}(${write.position.x}, ${write.position.y}, ${write.position.z}) sera place apres le step.`;
+        readout.textContent = `${write.agentTypeName} - ${CLICK_BUFFER_NAME}(${write.position.x}, ${write.position.y}, ${write.position.z}) sera place apres le step.`;
       }
       return;
     }
@@ -192,13 +409,19 @@
 
     if ((runtimeState.stepCount || 0) === 0) {
       pendingBufferWrites.push(write);
-      setStatus(`${CLICK_BUFFER_NAME}[${write.index}] = 0xFFFF44FF - reapplique apres le premier step.`);
+      setStatus(`${write.agentTypeName} -> ${CLICK_BUFFER_NAME}[${write.index}] = ${formatUintHex(write.agentTypeValue)} - reapplique apres le premier step.`);
     }
   }
 
   function buildClickBufferWrite(event) {
     if (!projectState) {
       setStatus('Projet non charge.');
+      return null;
+    }
+
+    const agentType = getSelectedAgentType();
+    if (!agentType) {
+      setStatus('Aucun type d agent selectionne.');
       return null;
     }
 
@@ -231,7 +454,12 @@
       return null;
     }
 
-    return { position, index };
+    return {
+      position,
+      index,
+      agentTypeName: agentType.name,
+      agentTypeValue: colorToBufferValue(agentType.color),
+    };
   }
 
   function applyClickBufferWrite(write, options = {}) {
@@ -240,7 +468,13 @@
     if (!buffer || !positionBuffer || !write?.position) return false;
 
     const { position, index } = write;
-    setBufferValueAtPosition(buffer, position, CLICK_BUFFER_VALUE);
+    const agentTypeValue = Number.isFinite(write.agentTypeValue)
+      ? write.agentTypeValue
+      : colorToBufferValue(FALLBACK_AGENT_TYPE_COLOR);
+    const agentTypeName = write.agentTypeName || 'Agent';
+    const agentTypeHex = formatUintHex(agentTypeValue);
+
+    setBufferValueAtPosition(buffer, position, agentTypeValue);
     setBufferValueAtPosition(positionBuffer, position, [
       position.x + 0.85,
       position.y + 0.5,
@@ -249,10 +483,10 @@
     runtime.markBindingsDirty();
 
     if (!options.silent) {
-      setStatus(`${CLICK_BUFFER_NAME}[${index}] = 0xFFFF44FF, ${CLICK_POSITION_BUFFER_NAME}[${index}] = vec3(${position.x + 0.85}, ${position.y + 0.5}, 0)`);
+      setStatus(`${agentTypeName} -> ${CLICK_BUFFER_NAME}[${index}] = ${agentTypeHex}, ${CLICK_POSITION_BUFFER_NAME}[${index}] = vec3(${position.x + 0.85}, ${position.y + 0.5}, 0)`);
     }
     if (!options.silent && readout) {
-      readout.textContent = `${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = 0xFFFF44FF ; ${CLICK_POSITION_BUFFER_NAME} = (${position.x + 0.85}, ${position.y + 0.5}, 0)`;
+      readout.textContent = `${agentTypeName} - ${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = ${agentTypeHex} ; ${CLICK_POSITION_BUFFER_NAME} = (${position.x + 0.85}, ${position.y + 0.5}, 0)`;
     }
     return true;
   }
@@ -274,7 +508,7 @@
 
     if (lastWrite && readout) {
       const { position } = lastWrite;
-      readout.textContent = `${applied} placement(s) applique(s). Dernier: ${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = 0xFFFF44FF`;
+      readout.textContent = `${applied} placement(s) applique(s). Dernier: ${lastWrite.agentTypeName || 'Agent'} - ${CLICK_BUFFER_NAME}(${position.x}, ${position.y}, ${position.z}) = ${formatUintHex(lastWrite.agentTypeValue)}`;
     }
 
     return applied;

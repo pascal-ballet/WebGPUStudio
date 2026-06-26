@@ -27,14 +27,28 @@
       <div class="preview-area">
         <aside class="agent-types" aria-label="Types d'agents">
           <h3>Types d'agents</h3>
-          <ul>
-            <li>Rouge</li>
-            <li>Vert</li>
-            <li>Bleu</li>
-            <li>Violet</li>
+          <div class="agent-type-actions" aria-label="Gestion des types d'agents">
+            <button type="button" class="agent-type-action" id="addAgentTypeButton" aria-label="Ajouter un type d'agent">+</button>
+            <button type="button" class="agent-type-action" id="removeAgentTypeButton" aria-label="Supprimer le type d'agent s&eacute;lectionn&eacute;">-</button>
+          </div>
+          <ul class="agent-type-list" id="agentTypesList" aria-label="Liste des types d'agents">
+            <li class="is-empty">Chargement...</li>
           </ul>
         </aside>
         <canvas id="bufferCanvas" class="texture-canvas" width="512" height="256"></canvas>
+        <aside class="agent-properties" aria-label="Propri&eacute;t&eacute;s du type d'agent s&eacute;lectionn&eacute;">
+          <h3>Propri&eacute;t&eacute;s</h3>
+          <div class="property-list">
+            <label class="property-field" for="agentName">
+              <span>Nom</span>
+              <input id="agentName" type="text" disabled />
+            </label>
+            <label class="property-field" for="agentColor">
+              <span>Couleur</span>
+              <input id="agentColor" class="color-picker" type="color" value="#000000" disabled />
+            </label>
+          </div>
+        </aside>
       </div>
 
       <div class="buffer-footer">
