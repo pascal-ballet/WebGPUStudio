@@ -10,17 +10,20 @@
 </head>
 <body>
   <main>
-    <h1>Syst&#232;me Multiagents</h1>
     <section class="panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">Projet SimBugs</p>
-          <h2>Vue 2D du buffer Render</h2>
+          <p class="eyebrow">SysMA v0.1 - (c) Pascal Ballet - Université de Brest</p>
         </div>
         <div class="panel-actions">
+          <label class="project-name-field" for="projectNameInput">
+            <span>Projet :</span>
+            <input id="projectNameInput" type="text" value="ma simulation" />
+          </label>
           <span class="buffer-meta" id="bufferMeta">Chargement...</span>
           <span class="step-label" id="stepLabel">step = 0</span>
           <button type="button" class="header-button" id="loadSaveButton">Charger</button>
+          <input id="saveFileInput" class="file-input" type="file" accept=".sma" />
           <button type="button" class="header-button" id="saveButton" disabled>Sauver</button>
           <button type="button" class="run-button" id="runButton" disabled>run</button>
         </div>
@@ -28,7 +31,7 @@
 
       <div class="preview-area">
         <aside class="agent-types" aria-label="Types d'agents">
-          <h3>Types d'agents</h3>
+          <h3>Agents</h3>
           <div class="agent-type-actions" aria-label="Gestion des types d'agents">
             <button type="button" class="agent-type-action" id="addAgentTypeButton" aria-label="Ajouter un type d'agent">+</button>
             <button type="button" class="agent-type-action" id="removeAgentTypeButton" aria-label="Supprimer le type d'agent s&eacute;lectionn&eacute;">-</button>

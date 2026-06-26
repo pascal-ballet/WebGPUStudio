@@ -3,6 +3,7 @@
 
   const PROJECT_URL = 'SimBugs.wgstudio';
   const SAVE_URL = 'default.sma';
+  const DEFAULT_SAVE_NAME = 'ma simulation';
   const TARGET_BUFFER_NAME = 'Render';
   const CLICK_BUFFER_NAME = 'Agent_0';
   const CLICK_POSITION_BUFFER_NAME = 'AgentX';
@@ -22,7 +23,9 @@
   const runStatus = document.getElementById('runStatus');
   const runButton = document.getElementById('runButton');
   const stepLabel = document.getElementById('stepLabel');
+  const projectNameInput = document.getElementById('projectNameInput');
   const loadSaveButton = document.getElementById('loadSaveButton');
+  const saveFileInput = document.getElementById('saveFileInput');
   const saveButton = document.getElementById('saveButton');
   const agentTypesList = document.getElementById('agentTypesList');
   const addAgentTypeButton = document.getElementById('addAgentTypeButton');
@@ -211,7 +214,14 @@
   function setupSaveControls() {
     if (loadSaveButton) {
       loadSaveButton.addEventListener('click', () => {
-        void loadSaveFromButton();
+        void chooseAndLoadSaveFile();
+      });
+    }
+    if (saveFileInput) {
+      saveFileInput.addEventListener('change', () => {
+        const file = saveFileInput.files?.[0];
+        saveFileInput.value = '';
+        if (file) void loadSaveFromFile(file);
       });
     }
     if (saveButton) {
@@ -222,19 +232,62 @@
     updateSaveControls();
   }
 
-  async function loadSaveFromButton() {
+  async function chooseAndLoadSaveFile() {
     if (!projectState) return;
 
     try {
-      setStatus('Chargement de default.sma...');
-      const saveState = await loadSaveState(SAVE_URL);
-      projectState.agentTypes = saveState.agentTypes;
-      selectedAgentTypeId = projectState.agentTypes[0]?.id || null;
-      renderAgentTypes();
-      setStatus('default.sma charge.');
+      if (window.showOpenFilePicker) {
+        const [handle] = await window.showOpenFilePicker({
+          multiple: false,
+          types: [
+            {
+              description: 'Simulation SMA',
+              accept: {
+                'application/json': ['.sma'],
+              },
+            },
+          ],
+        });
+        const file = await handle.getFile();
+        await loadSaveFromFile(file);
+        return;
+      }
+
+      if (saveFileInput) {
+        saveFileInput.click();
+        return;
+      }
+
+      setStatus('Selection de fichier .sma indisponible.');
     } catch (error) {
-      setStatus(`Chargement de default.sma impossible : ${error?.message || error}`);
+      if (error?.name === 'AbortError') {
+        setStatus('Chargement annule.');
+        return;
+      }
+      setStatus(`Chargement du fichier .sma impossible : ${error?.message || error}`);
     }
+  }
+
+  async function loadSaveFromFile(file) {
+    try {
+      setStatus(`Chargement de ${file.name}...`);
+      const source = JSON.parse(await file.text());
+      applySaveState(prepareSaveState(source), file.name);
+    } catch (error) {
+      setStatus(`Chargement de ${file?.name || 'fichier .sma'} impossible : ${error?.message || error}`);
+    }
+  }
+
+  function applySaveState(saveState, fileName = '') {
+    projectState.agentTypes = saveState.agentTypes;
+    selectedAgentTypeId = projectState.agentTypes[0]?.id || null;
+    renderAgentTypes();
+
+    if (fileName && projectNameInput) {
+      projectNameInput.value = fileName.replace(/\.sma$/i, '');
+    }
+
+    setStatus(`${fileName || 'Fichier .sma'} charge.`);
   }
 
   async function loadSaveState(saveUrl) {
@@ -262,11 +315,12 @@
     if (!projectState) return;
 
     const data = `${JSON.stringify(buildSaveState(), null, 2)}\n`;
+    const fileName = getSaveFileName();
 
     try {
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({
-          suggestedName: SAVE_URL,
+          suggestedName: fileName,
           types: [
             {
               description: 'Simulation SMA',
@@ -279,12 +333,12 @@
         const writable = await handle.createWritable();
         await writable.write(data);
         await writable.close();
-        setStatus('default.sma sauvegarde.');
+        setStatus(`${fileName} sauvegarde.`);
         return;
       }
 
-      downloadSaveFile(data);
-      setStatus('default.sma telecharge.');
+      downloadSaveFile(data, fileName);
+      setStatus(`${fileName} telecharge.`);
     } catch (error) {
       if (error?.name === 'AbortError') {
         setStatus('Sauvegarde annulee.');
@@ -305,12 +359,22 @@
     };
   }
 
-  function downloadSaveFile(data) {
+  function getSaveFileName() {
+    const rawName = (projectNameInput?.value || DEFAULT_SAVE_NAME).trim() || DEFAULT_SAVE_NAME;
+    const safeName = rawName
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+      .replace(/[. ]+$/g, '')
+      .trim() || DEFAULT_SAVE_NAME;
+
+    return /\.sma$/i.test(safeName) ? safeName : `${safeName}.sma`;
+  }
+
+  function downloadSaveFile(data, fileName) {
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = SAVE_URL;
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -427,6 +491,10 @@
     const agentTypes = getMutableAgentTypes();
     const index = agentTypes.findIndex((agentType) => agentType.id === selectedAgentTypeId);
     if (index === -1) return;
+
+    const agentType = agentTypes[index];
+    const confirmed = window.confirm(`Supprimer le type d'agent "${agentType.name}" ?`);
+    if (!confirmed) return;
 
     agentTypes.splice(index, 1);
     selectedAgentTypeId = agentTypes[Math.min(index, agentTypes.length - 1)]?.id || null;
