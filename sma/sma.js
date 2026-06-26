@@ -2,6 +2,7 @@
   'use strict';
 
   const PROJECT_URL = 'SimBugs.wgstudio';
+  const SAVE_URL = 'default.sma';
   const TARGET_BUFFER_NAME = 'Render';
   const CLICK_BUFFER_NAME = 'Agent_0';
   const CLICK_POSITION_BUFFER_NAME = 'AgentX';
@@ -21,6 +22,8 @@
   const runStatus = document.getElementById('runStatus');
   const runButton = document.getElementById('runButton');
   const stepLabel = document.getElementById('stepLabel');
+  const loadSaveButton = document.getElementById('loadSaveButton');
+  const saveButton = document.getElementById('saveButton');
   const agentTypesList = document.getElementById('agentTypesList');
   const addAgentTypeButton = document.getElementById('addAgentTypeButton');
   const removeAgentTypeButton = document.getElementById('removeAgentTypeButton');
@@ -56,6 +59,7 @@
   let selectedAgentTypeId = null;
 
   setupAgentTypeControls();
+  setupSaveControls();
   setupCanvasInteractions();
   setupPanelClick();
   setupRunButton();
@@ -82,6 +86,8 @@
 
       const project = await response.json();
       projectState = prepareProject(project);
+      const saveState = await loadSaveState(SAVE_URL);
+      projectState.agentTypes = saveState.agentTypes;
       selectedAgentTypeId = projectState.agentTypes[0]?.id || null;
       renderAgentTypes();
       renderBuffer = findProjectBuffer(projectState, bufferName);
@@ -92,8 +98,9 @@
       render2DBuffer(renderBuffer, displayedSlice);
       if (readout) readout.textContent = 'Survolez le buffer pour lire une valeur.';
       setStepLabel(0);
-      setStatus('Projet charge. Cliquez sur run.');
+      setStatus('Projet charge. default.sma charge. Cliquez sur run.');
       updateRunButton();
+      updateSaveControls();
     } catch (error) {
       const message = error?.message || String(error);
       projectState = null;
@@ -101,9 +108,10 @@
       selectedAgentTypeId = null;
       renderAgentTypes();
       if (meta) meta.textContent = 'Erreur de chargement';
-      if (readout) readout.textContent = `Impossible de charger ${PROJECT_URL} : ${message}`;
+      if (readout) readout.textContent = `Impossible de charger ${PROJECT_URL} ou ${SAVE_URL} : ${message}`;
       setStatus('Chargement impossible.');
       updateRunButton();
+      updateSaveControls();
     }
   }
 
@@ -123,7 +131,7 @@
 
     return {
       ...source,
-      agentTypes: prepareAgentTypes(source?.agentTypes),
+      agentTypes: [],
       textures,
       shaders,
       functions: Array.isArray(source?.functions) ? source.functions.map((fn) => ({ ...fn })) : [],
@@ -198,6 +206,121 @@
   function findProjectBuffer(project, bufferName) {
     const textures = Array.isArray(project?.textures) ? project.textures : [];
     return textures.find((texture) => texture?.name === bufferName) || null;
+  }
+
+  function setupSaveControls() {
+    if (loadSaveButton) {
+      loadSaveButton.addEventListener('click', () => {
+        void loadSaveFromButton();
+      });
+    }
+    if (saveButton) {
+      saveButton.addEventListener('click', () => {
+        void saveCurrentSimulation();
+      });
+    }
+    updateSaveControls();
+  }
+
+  async function loadSaveFromButton() {
+    if (!projectState) return;
+
+    try {
+      setStatus('Chargement de default.sma...');
+      const saveState = await loadSaveState(SAVE_URL);
+      projectState.agentTypes = saveState.agentTypes;
+      selectedAgentTypeId = projectState.agentTypes[0]?.id || null;
+      renderAgentTypes();
+      setStatus('default.sma charge.');
+    } catch (error) {
+      setStatus(`Chargement de default.sma impossible : ${error?.message || error}`);
+    }
+  }
+
+  async function loadSaveState(saveUrl) {
+    const response = await fetch(saveUrl, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const source = await response.json();
+    return prepareSaveState(source);
+  }
+
+  function prepareSaveState(source) {
+    const agentTypes = Array.isArray(source?.agentTypes)
+      ? source.agentTypes
+      : (Array.isArray(source) ? source : DEFAULT_AGENT_TYPES);
+
+    return {
+      version: Number.isFinite(Number(source?.version)) ? Number(source.version) : 1,
+      agentTypes: prepareAgentTypes(agentTypes),
+    };
+  }
+
+  async function saveCurrentSimulation() {
+    if (!projectState) return;
+
+    const data = `${JSON.stringify(buildSaveState(), null, 2)}\n`;
+
+    try {
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: SAVE_URL,
+          types: [
+            {
+              description: 'Simulation SMA',
+              accept: {
+                'application/json': ['.sma', '.json'],
+              },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(data);
+        await writable.close();
+        setStatus('default.sma sauvegarde.');
+        return;
+      }
+
+      downloadSaveFile(data);
+      setStatus('default.sma telecharge.');
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        setStatus('Sauvegarde annulee.');
+        return;
+      }
+      setStatus(`Sauvegarde impossible : ${error?.message || error}`);
+    }
+  }
+
+  function buildSaveState() {
+    return {
+      version: 1,
+      agentTypes: getAgentTypes().map((agentType) => ({
+        id: agentType.id,
+        name: agentType.name,
+        color: agentType.color,
+      })),
+    };
+  }
+
+  function downloadSaveFile(data) {
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = SAVE_URL;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function updateSaveControls() {
+    const hasProject = Boolean(projectState);
+    if (loadSaveButton) loadSaveButton.disabled = !hasProject;
+    if (saveButton) saveButton.disabled = !hasProject;
   }
 
   function setupAgentTypeControls() {
